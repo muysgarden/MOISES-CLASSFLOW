@@ -3,7 +3,7 @@ os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 import unittest
 from unittest.mock import patch
 import tempfile
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QSizePolicy, QPushButton
 from PyQt5.QtPrintSupport import QPrinter
 from PyQt5.QtTest import QTest
 from PyQt5.QtCore import Qt
@@ -127,6 +127,18 @@ class SystemTests(unittest.TestCase):
         for i in range(reports.report.count()):
             reports.report.setCurrentIndex(i); app.processEvents(); self.assertTrue(reports.headers)
         reports.report.setCurrentIndex(2)
+        sheet=reports.schedule_sheet_html()
+        self.assertIn('>PERIOD</th>',sheet)
+        self.assertIn('>MONDAY</th>',sheet)
+        self.assertIn('BSCS 2A',sheet)
+        self.assertIn('2nd year',sheet)
+        self.assertEqual(sheet.count('<td height="18" align="center">'),26)
+        self.assertIn('rowspan=',sheet)
+        for row in reports.report_rows:
+            for key in ('code','section','faculty','room'):
+                self.assertIn(row[key],sheet)
+        self.assertEqual(reports.calendar.sizePolicy().verticalPolicy(),QSizePolicy.Fixed)
+        self.assertNotIn('Generate Timetable',[b.text() for b in reports.findChildren(QPushButton)])
         printer=QPrinter(); printer.setOutputFormat(QPrinter.PdfFormat); printer.setOutputFileName(os.path.join(tempfile.gettempdir(),'classflow-report-test.pdf')); reports.document().print_(printer)
         self.assertGreater(os.path.getsize(os.path.join(tempfile.gettempdir(),'classflow-report-test.pdf')),1000)
         # Capture each actual UI for visual inspection.

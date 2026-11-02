@@ -1,5 +1,6 @@
 import csv
 import html
+import re
 from PyQt5.QtGui import QTextDocument
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QFileDialog
@@ -14,7 +15,7 @@ class ReportsPage(Page):
     def __init__(self,win):
         super().__init__(win)
         self.add_header('MODULE 05','Timetable Generation and Reports','Generate, review, and export official schedules and academic utilization reports.',[
-            button('Print',slot=self.print_report),button('Export PDF',slot=self.export_pdf),button('Export CSV',slot=self.export_csv),button('Generate Timetable','primary',self.refresh)])
+            button('Print',slot=self.print_report),button('Export PDF',slot=self.export_pdf),button('Export CSV',slot=self.export_csv)])
         card=Card(); self.lay.addWidget(card); row=QHBoxLayout(); card.body(margins=(18,18,18,18)).addLayout(row)
         self.report=Combo(); self.report.addItems(REPORTS); self.report.setCurrentIndex(2)
         self.program=Combo(); self.section=Combo(); self.faculty=Combo(); self.room=Combo()
@@ -95,12 +96,132 @@ class ReportsPage(Page):
         set_kind(self.banner,'bad' if validation['critical'] else 'good')
         self.summary.setText(f'Total subjects: {len({r["subject_id"] for r in self.report_rows})}\n\nWeekly class hours: {sum((r["end_min"]-r["start_min"])/60 for r in self.report_rows):g}\n\nRooms assigned: {len({r["room_id"] for r in self.report_rows})}\n\nAverage room utilization:\n{sum(v for _,v in utilization)/6:.1f}%')
 
+    def schedule_sheet_html(self):
+        esc = lambda value: html.escape(str(value))
+        slot_minutes = 30
+        slot_count = (logic.CAL_END - logic.CAL_START) // slot_minutes
+        by_day = {day: [] for day in logic.DAY_CODES}
+        for row in self.report_rows:
+            if row["day"] not in by_day:
+                continue
+            start = max(logic.CAL_START, row["start_min"])
+            end = min(logic.CAL_END, row["end_min"])
+            if end <= start:
+                continue
+            start_slot = max(0, (start - logic.CAL_START) // slot_minutes)
+            end_slot = min(slot_count, (end - logic.CAL_START + slot_minutes - 1) // slot_minutes)
+            if end_slot > start_slot:
+                by_day[row["day"]].append((start_slot, end_slot, row))
+
+        day_cells = {}
+        for day, entries in by_day.items():
+            entries.sort(key=lambda item: (item[0], item[1], item[2]["code"]))
+            components = []
+            for start_slot, end_slot, row in entries:
+                if components and start_slot < components[-1]["end"]:
+                    components[-1]["end"] = max(components[-1]["end"], end_slot)
+                    components[-1]["rows"].append(row)
+                else:
+                    components.append({"start": start_slot, "end": end_slot, "rows": [row]})
+            day_cells[day] = {component["start"]: component for component in components}
+
+        section_ids = {row["section_id"] for row in self.report_rows}
+        section_id = self.section.currentData()
+        if section_id is None and len(section_ids) == 1:
+            section_id = next(iter(section_ids))
+        section = db.row(
+            "SELECT sec.name, p.name AS program_name FROM sections sec "
+            "JOIN programs p ON p.id=sec.program_id WHERE sec.id=?",
+            (section_id,),
+        ) if section_id is not None else None
+        program_name = "All programs"
+        program_id = self.program.currentData()
+        if section is not None:
+            program_name = section["program_name"]
+        elif program_id is not None:
+            program = db.row("SELECT name FROM programs WHERE id=?", (program_id,))
+            if program:
+                program_name = program["name"]
+
+        section_name = section["name"] if section else "All sections"
+        year = "—"
+        match = re.search(r"\b(\d+)\s*[A-Za-z]?$", section_name)
+        if match:
+            year_number = int(match.group(1))
+            suffix = "th" if 10 <= year_number % 100 <= 20 else {
+                1: "st", 2: "nd", 3: "rd"
+            }.get(year_number % 10, "th")
+            year = f"{year_number}{suffix} year"
+
+        meta = [
+            f"<b>Program:</b> {esc(program_name)}",
+            f"<b>Year:</b> {esc(year)}",
+            f"<b>Section:</b> {esc(section_name)}",
+        ]
+        if self.report.currentText() == "Faculty Schedules" and self.faculty.currentData() is not None:
+            meta.append(f"<b>Faculty:</b> {esc(self.faculty.currentText())}")
+        if self.report.currentText() == "Classroom Schedules" and self.room.currentData() is not None:
+            meta.append(f"<b>Classroom:</b> {esc(self.room.currentText())}")
+
+        def block_text(rows):
+            blocks = []
+            for row in rows:
+                room_kind = "LAB" if row["room_type"] == "Laboratory" else "LEC"
+                blocks.append(
+                    f"<b>{esc(row['code'])} · {esc(row['section'])}</b><br>"
+                    f"{esc(row['faculty'])}<br>"
+                    f"{esc(row['room'])} ({room_kind})"
+                )
+            return "<hr>".join(blocks)
+
+        head = (
+            '<h2 align="center">CLASS SCHEDULE</h2>'
+            f'<p align="center">{esc(self.win.term_name())}</p>'
+            '<table width="100%" cellspacing="0" cellpadding="4"><tr>'
+            + "".join(f"<td>{item}</td>" for item in meta)
+            + "</tr></table>"
+        )
+        table = (
+            '<table width="100%" border="1" cellspacing="0" cellpadding="2">'
+            '<tr bgcolor="#e9edf3"><th width="12%">PERIOD</th>'
+            + "".join(f"<th>{esc(name.upper())}</th>" for _, name in db.DAYS)
+            + "</tr>"
+        )
+        active_until = {day: 0 for day in logic.DAY_CODES}
+        for slot in range(slot_count):
+            minute = logic.CAL_START + slot * slot_minutes
+            next_minute = minute + slot_minutes
+            cells = [
+                f'<td height="18" align="center">{esc(logic.fmt(minute))}–{esc(logic.fmt(next_minute))}</td>'
+            ]
+            for day, _ in db.DAYS:
+                component = day_cells[day].get(slot)
+                if component:
+                    span = component["end"] - component["start"]
+                    active_until[day] = component["end"]
+                    content = block_text(component["rows"])
+                    cells.append(
+                        f'<td rowspan="{span}" height="{max(18 * span, 36 * len(component["rows"]))}" '
+                        f'bgcolor="#fce8d4" align="center" valign="middle">'
+                        f'<font size="2">{content}</font></td>'
+                    )
+                elif slot >= active_until[day]:
+                    cells.append("<td></td>")
+            table += "<tr>" + "".join(cells) + "</tr>"
+        return head + table + "</table>"
+
     def document(self):
         esc=lambda x:html.escape(str(x))
-        doc=QTextDocument(); doc.setHtml('<h1>ClassFlow</h1><h2>'+esc(self.report.currentText())+'</h2><p>'+esc(self.win.term_name())+'</p><p>'+esc(self.banner.title.text())+'</p><table border="1" cellspacing="0" cellpadding="6"><tr>'+''.join('<th>'+esc(h)+'</th>' for h in self.headers)+'</tr>'+''.join('<tr>'+''.join('<td>'+esc(v)+'</td>' for v in row)+'</tr>' for row in self.output)+'</table>'); return doc
+        doc=QTextDocument()
+        if self.report.currentText() in REPORTS[:4]:
+            doc.setHtml(self.schedule_sheet_html())
+        else:
+            doc.setHtml('<h1>ClassFlow</h1><h2>'+esc(self.report.currentText())+'</h2><p>'+esc(self.win.term_name())+'</p><p>'+esc(self.banner.title.text())+'</p><table border="1" cellspacing="0" cellpadding="6"><tr>'+''.join('<th>'+esc(h)+'</th>' for h in self.headers)+'</tr>'+''.join('<tr>'+''.join('<td>'+esc(v)+'</td>' for v in row)+'</tr>' for row in self.output)+'</table>')
+        return doc
 
     def export_pdf(self):
-        path,_=QFileDialog.getSaveFileName(self,'Export PDF','ClassFlow-report.pdf','PDF (*.pdf)')
+        default_name = "ClassFlow-schedule-sheet.pdf" if self.report.currentText() in REPORTS[:4] else "ClassFlow-report.pdf"
+        path,_=QFileDialog.getSaveFileName(self,'Export PDF',default_name,'PDF (*.pdf)')
         if path:
             printer=QPrinter(QPrinter.HighResolution); printer.setOrientation(QPrinter.Landscape); printer.setOutputFormat(QPrinter.PdfFormat); printer.setOutputFileName(path); self.document().print_(printer); self.win.notify('PDF report exported.')
 

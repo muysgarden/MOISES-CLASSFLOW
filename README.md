@@ -48,7 +48,7 @@ The login uses ClassFlow branding, a dark split card, username/password fields, 
 2. **Faculty and Room Availability** — find available resources by day/time/type; view teaching loads and actual weekly availability blocks. Mark resource unavailability, or clear its saved windows. The three daily grid blocks are 8 AM–12 PM, 1 PM–5 PM, and 5 PM–8 PM. Unavailability preferences apply across academic terms.
 3. **Schedule Management** — assign a subject, section, faculty member, room, days, and start/end time. Preview conflicts before saving, edit/delete assignments, search, and view section calendars. Critical conflicts block saving; warnings require confirmation.
 4. **Conflict Detection and Validation** — detect faculty/room/section overlaps, room-capacity problems, excessive teaching loads, invalid school times, and unavailable resources. Filter results and open the affected assignment with Resolve.
-5. **Timetable Generation and Reports** — generate views from saved assignments, filter by program/section/faculty/room, view actual room utilization, faculty loads, conflict reports, and available rooms. Export PDF or CSV and use the system print dialog. Generate Timetable refreshes a timetable from assignments; it does not automatically assign unscheduled classes.
+5. **Timetable Generation and Reports** — view saved assignments as weekly schedules, filter by program/section/faculty/room, and review room utilization, faculty loads, conflict reports, and available rooms. Print or export schedule reports as a half-hour Period × Monday–Saturday grid, or export report data as CSV. Reports update automatically when filters or saved data change; the system does not automatically assign unscheduled classes.
 
 ## Verification
 

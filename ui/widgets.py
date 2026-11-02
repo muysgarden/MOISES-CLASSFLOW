@@ -159,7 +159,7 @@ class Card(QFrame):
             head = QWidget()
             head.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
             h = QHBoxLayout(head)
-            h.setContentsMargins(18, 14, 18, 12)
+            h.setContentsMargins(16, 12, 16, 10)
             col = QVBoxLayout()
             col.setSpacing(1)
             self.title_label = label(title, "cardTitle")
@@ -176,7 +176,7 @@ class Card(QFrame):
         self.v.addWidget(widget)
         return widget
 
-    def body(self, margins=(18, 0, 18, 18), spacing=10):
+    def body(self, margins=(16, 0, 16, 16), spacing=8):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(*margins)
@@ -221,8 +221,8 @@ class Page(QScrollArea):
         body = QWidget()
         body.setObjectName("pagebody")
         self.lay = QVBoxLayout(body)
-        self.lay.setContentsMargins(24, 20, 24, 28)
-        self.lay.setSpacing(16)
+        self.lay.setContentsMargins(18, 16, 18, 20)
+        self.lay.setSpacing(12)
         self.setWidget(body)
 
     def add_header(self, eyebrow, title, subtitle, actions=()):
@@ -442,7 +442,7 @@ class BarChart(QWidget):
 
 class CalendarWidget(QWidget):
 
-    HEADER, TIMECOL, ROW_H = 30, 66, 44
+    HEADER, TIMECOL, ROW_H, SLOT_MINUTES = 30, 66, 22, 30
     COLORS = {  # background, accent, text
         "major": ("#e8eff8", "#214777", "#203b68"),
         "ged": ("#e0f2f7", "#268db7", "#137b98"),
@@ -452,13 +452,18 @@ class CalendarWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.rows, self.sub_key = [], "room"
-        self.hours = (logic.CAL_END - logic.CAL_START) // 60
-        self.setFixedHeight(self.HEADER + self.hours * self.ROW_H + 2)
+        self.slots = (logic.CAL_END - logic.CAL_START) // self.SLOT_MINUTES
+        self.setFixedHeight(self.HEADER + self.slots * self.ROW_H + 2)
         self.setMinimumWidth(480)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
     def set_rows(self, rows, sub_key="room"):
         self.rows, self.sub_key = rows, sub_key
+        self.setToolTip("\n".join(
+            f"{r['day']} {logic.fmt(r['start_min'])}–{logic.fmt(r['end_min'])}: "
+            f"{r['code']} · {r['section']} · {r['faculty']} · {r['room']}"
+            for r in rows
+        ))
         self.update()
 
     def paintEvent(self, _):
@@ -480,13 +485,14 @@ class CalendarWidget(QWidget):
 
         f.setBold(False)
         p.setFont(f)
-        for h in range(self.hours):
-            y = self.HEADER + h * self.ROW_H
+        for slot in range(self.slots):
+            y = self.HEADER + slot * self.ROW_H
             p.setPen(QPen(QColor("#eef0f6"), 1))
             p.drawLine(self.TIMECOL, y, W, y)
             p.setPen(QColor("#7b869c"))
-            p.drawText(QRectF(0, y + (2 if h == 0 else -7), self.TIMECOL - 8, 14),
-                       Qt.AlignRight | Qt.AlignVCenter, logic.fmt(logic.CAL_START + h * 60))
+            p.drawText(QRectF(0, y, self.TIMECOL - 8, self.ROW_H),
+                       Qt.AlignRight | Qt.AlignVCenter,
+                       logic.fmt(logic.CAL_START + slot * self.SLOT_MINUTES))
         p.setPen(QPen(QColor("#e6e9f0"), 1))
         for i in range(7):
             x = self.TIMECOL + i * colw
@@ -497,8 +503,8 @@ class CalendarWidget(QWidget):
             if e <= s:
                 continue
             x = self.TIMECOL + logic.DAY_CODES.index(r["day"]) * colw + 3
-            y = self.HEADER + (s - logic.CAL_START) / 60 * self.ROW_H + 1
-            h = max((e - s) / 60 * self.ROW_H - 3, 18)
+            y = self.HEADER + (s - logic.CAL_START) / self.SLOT_MINUTES * self.ROW_H + 1
+            h = max((e - s) / self.SLOT_MINUTES * self.ROW_H - 3, self.ROW_H - 3)
             bg, accent, fg = self.COLORS[r["category"]]
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(bg))
