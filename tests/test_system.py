@@ -79,19 +79,25 @@ class SystemTests(unittest.TestCase):
         for key,value in [('days','Sat'),('start',780),('end',840)]:
             page.fields[key].setCurrentIndex(page.fields[key].findData(value))
         before=db.row('SELECT COUNT(*) FROM schedules')[0]
-        page.save()
-        self.assertEqual(db.row('SELECT COUNT(*) FROM schedules')[0],before+1)
-        record=db.row('SELECT MAX(id) FROM schedules')[0]
-        page.open(edit_ids=[record])
-        page.fields['end'].setCurrentIndex(page.fields['end'].findData(870))
-        page.save()
-        self.assertEqual(db.row('SELECT COUNT(*) FROM schedules')[0],before+1)
-        edited=db.row('SELECT * FROM schedules WHERE day="Sat"')
-        self.assertEqual(edited['end_min'],870)
-        group=next(g for g in logic.group_rows(logic.schedule_rows(1)) if edited['id'] in g['ids'])
-        from PyQt5.QtWidgets import QMessageBox
-        with patch.object(QMessageBox,'question',return_value=QMessageBox.Yes): page.delete(group)
-        self.assertEqual(db.row('SELECT COUNT(*) FROM schedules')[0],before)
+        with tempfile.TemporaryDirectory() as directory, patch(
+            'ui.reports.QStandardPaths.writableLocation', return_value=directory
+        ):
+            page.save()
+            self.assertEqual(db.row('SELECT COUNT(*) FROM schedules')[0],before+1)
+            device_pdf=os.path.join(directory,'ClassFlow','Schedules','ClassFlow-schedule-sheet-term-1.pdf')
+            self.assertGreater(os.path.getsize(device_pdf),1000)
+            record=db.row('SELECT MAX(id) FROM schedules')[0]
+            page.open(edit_ids=[record])
+            page.fields['end'].setCurrentIndex(page.fields['end'].findData(870))
+            page.save()
+            self.assertEqual(db.row('SELECT COUNT(*) FROM schedules')[0],before+1)
+            edited=db.row('SELECT * FROM schedules WHERE day="Sat"')
+            self.assertEqual(edited['end_min'],870)
+            group=next(g for g in logic.group_rows(logic.schedule_rows(1)) if edited['id'] in g['ids'])
+            from PyQt5.QtWidgets import QMessageBox
+            with patch.object(QMessageBox,'question',return_value=QMessageBox.Yes): page.delete(group)
+            self.assertEqual(db.row('SELECT COUNT(*) FROM schedules')[0],before)
+            self.assertGreater(os.path.getsize(device_pdf),1000)
         win.close()
 
     def test_academic_faculty_creation(self):

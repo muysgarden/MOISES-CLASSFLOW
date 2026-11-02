@@ -1,6 +1,8 @@
 import csv
 import html
 import re
+from pathlib import Path
+from PyQt5.QtCore import QStandardPaths
 from PyQt5.QtGui import QTextDocument
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QFileDialog
@@ -96,12 +98,13 @@ class ReportsPage(Page):
         set_kind(self.banner,'bad' if validation['critical'] else 'good')
         self.summary.setText(f'Total subjects: {len({r["subject_id"] for r in self.report_rows})}\n\nWeekly class hours: {sum((r["end_min"]-r["start_min"])/60 for r in self.report_rows):g}\n\nRooms assigned: {len({r["room_id"] for r in self.report_rows})}\n\nAverage room utilization:\n{sum(v for _,v in utilization)/6:.1f}%')
 
-    def schedule_sheet_html(self):
+    def schedule_sheet_html(self, all_schedules=False):
         esc = lambda value: html.escape(str(value))
         slot_minutes = 30
         slot_count = (logic.CAL_END - logic.CAL_START) // slot_minutes
         by_day = {day: [] for day in logic.DAY_CODES}
-        for row in self.report_rows:
+        report_rows = logic.schedule_rows(self.win.term_id()) if all_schedules else self.report_rows
+        for row in report_rows:
             if row["day"] not in by_day:
                 continue
             start = max(logic.CAL_START, row["start_min"])
@@ -125,8 +128,8 @@ class ReportsPage(Page):
                     components.append({"start": start_slot, "end": end_slot, "rows": [row]})
             day_cells[day] = {component["start"]: component for component in components}
 
-        section_ids = {row["section_id"] for row in self.report_rows}
-        section_id = self.section.currentData()
+        section_ids = {row["section_id"] for row in report_rows}
+        section_id = None if all_schedules else self.section.currentData()
         if section_id is None and len(section_ids) == 1:
             section_id = next(iter(section_ids))
         section = db.row(
@@ -135,7 +138,7 @@ class ReportsPage(Page):
             (section_id,),
         ) if section_id is not None else None
         program_name = "All programs"
-        program_id = self.program.currentData()
+        program_id = None if all_schedules else self.program.currentData()
         if section is not None:
             program_name = section["program_name"]
         elif program_id is not None:
@@ -158,9 +161,10 @@ class ReportsPage(Page):
             f"<b>Year:</b> {esc(year)}",
             f"<b>Section:</b> {esc(section_name)}",
         ]
-        if self.report.currentText() == "Faculty Schedules" and self.faculty.currentData() is not None:
+        report_name = "Class Schedules" if all_schedules else self.report.currentText()
+        if report_name == "Faculty Schedules" and self.faculty.currentData() is not None:
             meta.append(f"<b>Faculty:</b> {esc(self.faculty.currentText())}")
-        if self.report.currentText() == "Classroom Schedules" and self.room.currentData() is not None:
+        if report_name == "Classroom Schedules" and self.room.currentData() is not None:
             meta.append(f"<b>Classroom:</b> {esc(self.room.currentText())}")
 
         def block_text(rows):
@@ -209,6 +213,25 @@ class ReportsPage(Page):
                     cells.append("<td></td>")
             table += "<tr>" + "".join(cells) + "</tr>"
         return head + table + "</table>"
+
+    def save_schedule_sheet(self):
+        documents = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)
+        if not documents:
+            raise OSError("The device Documents folder is not available.")
+        directory = Path(documents) / "ClassFlow" / "Schedules"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"ClassFlow-schedule-sheet-term-{self.win.term_id()}.pdf"
+
+        document = QTextDocument()
+        document.setHtml(self.schedule_sheet_html(all_schedules=True))
+        printer = QPrinter(QPrinter.HighResolution)
+        printer.setOrientation(QPrinter.Landscape)
+        printer.setOutputFormat(QPrinter.PdfFormat)
+        printer.setOutputFileName(str(path))
+        document.print_(printer)
+        if not path.is_file() or path.stat().st_size == 0:
+            raise OSError(f"The schedule PDF could not be written to {path}.")
+        return path
 
     def document(self):
         esc=lambda x:html.escape(str(x))

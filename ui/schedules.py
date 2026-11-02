@@ -67,7 +67,15 @@ class SchedulesPage(Page):
             QMessageBox.warning(self,'Cannot save schedule','\n'.join(i['desc'] for i in issues)); return
         if issues and QMessageBox.question(self,'Schedule warnings','\n'.join(i['desc'] for i in issues)+'\n\nSave anyway?',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)!=QMessageBox.Yes: return
         logic.save_schedule(self.win.term_id(),d['subject_id'],d['section_id'],d['faculty_id'],d['room_id'],d['days'].split(','),d['start'],d['end'],self.replace_ids)
-        self.replace_ids=[]; self.win.data_changed(); self.render(); self.preview(); self.win.notify('Schedule saved.')
+        self.replace_ids=[]; self.win.data_changed(); self.render(); self.preview(); self.save_device_copy()
+
+    def save_device_copy(self):
+        try:
+            path = self.win.pages['reports'].save_schedule_sheet()
+        except (OSError, RuntimeError) as error:
+            self.win.notify(f'Schedule data was saved, but the device PDF could not be updated: {error}', 'error')
+        else:
+            self.win.notify(f'Schedule saved. Device PDF updated in {path.parent}.')
 
     def clear(self):
         self.replace_ids=[]; self.refresh()
@@ -104,7 +112,7 @@ class SchedulesPage(Page):
 
     def delete(self,g):
         if QMessageBox.question(self,'Delete schedule','Delete '+g['code']+' for '+g['section']+'?',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes:
-            logic.delete_schedules(self.win.term_id(),g['ids']); self.replace_ids=[]; self.render(); self.preview(); self.win.data_changed()
+            logic.delete_schedules(self.win.term_id(),g['ids']); self.replace_ids=[]; self.render(); self.preview(); self.win.data_changed(); self.save_device_copy()
 
     def open(self,edit_ids=None,**kw):
         self.refresh()
