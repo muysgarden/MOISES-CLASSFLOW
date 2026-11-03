@@ -100,6 +100,48 @@ class SystemTests(unittest.TestCase):
             self.assertGreater(os.path.getsize(device_pdf),1000)
         win.close()
 
+    def test_room_utilization_schedule_includes_all_room_occupants(self):
+        win=MainWindow()
+        reports=win.pages['reports']
+        reports.refresh()
+        room=db.row('SELECT id FROM classrooms WHERE name="Room 103"')['id']
+        reports.room.setCurrentIndex(reports.room.findData(room))
+        reports.report.setCurrentIndex(reports.report.findText('Room Utilization Schedule'))
+        reports.program.setCurrentIndex(reports.program.findData(
+            db.row('SELECT id FROM programs WHERE code="BSIT"')['id']
+        ))
+        reports.faculty.setCurrentIndex(reports.faculty.findData(
+            db.row('SELECT id FROM faculty WHERE name="Prof. Miguel Cruz"')['id']
+        ))
+        reports.section.setCurrentIndex(reports.section.findData(
+            db.row('SELECT id FROM sections WHERE name="BSIT 2B"')['id']
+        ))
+        expected={r['id'] for r in logic.schedule_rows(1) if r['room_id']==room}
+        self.assertEqual({r['id'] for r in reports.report_rows},expected)
+        self.assertGreater(len({r['section_id'] for r in reports.report_rows}),1)
+        with db.conn:
+            db.conn.execute(
+                'INSERT INTO unavailable(kind,resource_id,day,start_min,end_min) VALUES(?,?,?,?,?)',
+                ('room',room,'Sat',480,540),
+            )
+        reports.render()
+        statuses={row[4] for row in reports.output}
+        self.assertIn('Available',statuses)
+        self.assertIn('Unavailable',statuses)
+        sheet=reports.room_utilization_html()
+        self.assertIn('ROOM UTILIZATION SCHEDULE',sheet)
+        self.assertIn('SATURDAY',sheet)
+        self.assertIn('bgcolor="#ffffff"',sheet)
+        self.assertIn('color="#000000"',sheet)
+        self.assertNotIn('#e8eff8',sheet)
+        self.assertNotIn('#fce8d4',sheet)
+        self.assertIn('AVAILABLE',sheet)
+        self.assertIn('UNAVAILABLE',sheet)
+        self.assertIn('BSCS 1A',sheet)
+        self.assertIn('Dr. Elena Santos',sheet)
+        self.assertNotIn('Room 104',sheet)
+        win.close()
+
     def test_academic_faculty_creation(self):
         win=MainWindow(); page=win.pages['academic']; page.set_tab('faculty')
         page.form.widgets['name'].setText('Prof. Test Faculty')
@@ -116,7 +158,7 @@ class SystemTests(unittest.TestCase):
             with patch('ui.reports.QFileDialog.getSaveFileName',return_value=(pdf,'PDF')): reports.export_pdf()
             with patch('ui.reports.QFileDialog.getSaveFileName',return_value=(csv_path,'CSV')): reports.export_csv()
             self.assertGreater(os.path.getsize(pdf),1000)
-            with open(csv_path,encoding='utf-8-sig') as f: self.assertIn('Subject,Section,Faculty,Room,Day,Time',f.read())
+            with open(csv_path,encoding='utf-8-sig') as f: self.assertIn('Room,Day,From,To,Status,Course,Section,Instructor',f.read())
         win.close()
         db.conn.close()
         with tempfile.TemporaryDirectory() as directory:

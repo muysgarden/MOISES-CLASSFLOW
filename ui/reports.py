@@ -10,7 +10,7 @@ from ui.widgets import Page, Card, Combo, CalendarWidget, BarChart, Banner, butt
 import db
 import logic
 
-REPORTS=['Class Schedules','Faculty Schedules','Section Schedules','Classroom Schedules','Room Utilization','Faculty Teaching Load','Conflict Reports','Available Rooms']
+REPORTS=['Class Schedules','Faculty Schedules','Section Schedules','Room Utilization Schedule','Room Utilization','Faculty Teaching Load','Conflict Reports','Available Rooms']
 
 
 class ReportsPage(Page):
@@ -19,7 +19,7 @@ class ReportsPage(Page):
         self.add_header('MODULE 05','Timetable Generation and Reports','Generate, review, and export official schedules and academic utilization reports.',[
             button('Print',slot=self.print_report),button('Export PDF',slot=self.export_pdf),button('Export CSV',slot=self.export_csv)])
         card=Card(); self.lay.addWidget(card); row=QHBoxLayout(); card.body(margins=(18,18,18,18)).addLayout(row)
-        self.report=Combo(); self.report.addItems(REPORTS); self.report.setCurrentIndex(2)
+        self.report=Combo(); self.report.addItems(REPORTS); self.report.setCurrentIndex(3)
         self.program=Combo(); self.section=Combo(); self.faculty=Combo(); self.room=Combo()
         for title,w in [('Report Type',self.report),('Program',self.program),('Section',self.section),('Faculty',self.faculty),('Classroom',self.room)]:
             row.addWidget(labeled(title,w),1)
@@ -31,14 +31,17 @@ class ReportsPage(Page):
         self.table=make_table(['Subject','Section','Faculty','Room','Day','Time']); body.addWidget(self.table)
         self.banner=Banner(); body.addWidget(self.banner)
         right=QVBoxLayout(); columns.addLayout(right,1)
-        chart=Card('Room Utilization','Weekly occupancy rate'); self.chart=BarChart(); chart.body().addWidget(self.chart); right.addWidget(chart)
+        chart=Card('Room Utilization','Weekly occupancy rate'); self.chart_card=chart; self.chart=BarChart(); chart.body().addWidget(self.chart); right.addWidget(chart)
         summary=Card('Schedule Summary'); self.summary=label('',wrap=True); summary.body().addWidget(self.summary); right.addWidget(summary); right.addStretch(); self.finish()
 
     def refresh(self):
         for combo,sql,alltext in [(self.program,'SELECT id,name FROM programs ORDER BY code','All programs'),(self.faculty,'SELECT id,name FROM faculty ORDER BY name','All faculty'),(self.room,'SELECT id,name FROM classrooms ORDER BY name','All classrooms')]:
             keep=combo.currentData(); combo.blockSignals(True); combo.clear(); combo.addItem(alltext,None)
             for r in db.rows(sql): combo.addItem(r[1],r[0])
-            combo.setCurrentIndex(max(0,combo.findData(keep))); combo.blockSignals(False)
+            index=combo.findData(keep)
+            if index < 0 and combo is self.room and combo.count() > 1:
+                index=1
+            combo.setCurrentIndex(max(0,index)); combo.blockSignals(False)
         self.populate_sections()
 
     def populate_sections(self):
@@ -53,25 +56,70 @@ class ReportsPage(Page):
         rows=logic.schedule_rows(self.win.term_id()); pid=self.program.currentData()
         sections={r[0] for r in db.rows('SELECT id FROM sections WHERE program_id=?',(pid,))} if pid else None
         mode=self.report.currentText()
-        self.report_rows=[r for r in rows if (sections is None or r['section_id'] in sections) and (self.section.currentData() is None or r['section_id']==self.section.currentData()) and (self.faculty.currentData() is None or r['faculty_id']==self.faculty.currentData()) and (self.room.currentData() is None or r['room_id']==self.room.currentData())]
-        self.calendar.set_rows(self.report_rows,'section' if mode in ['Faculty Schedules','Classroom Schedules'] else 'room')
-        self.main_card.title_label.setText(mode+' — '+self.section.currentText())
+        if mode == 'Room Utilization Schedule':
+            room_id = self.room.currentData()
+            self.report_rows = [r for r in rows if room_id is not None and r['room_id'] == room_id]
+        else:
+            self.report_rows=[r for r in rows if (sections is None or r['section_id'] in sections) and (self.section.currentData() is None or r['section_id']==self.section.currentData()) and (self.faculty.currentData() is None or r['faculty_id']==self.faculty.currentData()) and (self.room.currentData() is None or r['room_id']==self.room.currentData())]
+        self.calendar.set_rows(
+            self.report_rows,
+            'section' if mode in ['Faculty Schedules','Room Utilization Schedule'] else 'room',
+            include_faculty=mode == 'Room Utilization Schedule',
+            show_availability=mode == 'Room Utilization Schedule' and self.room.currentData() is not None,
+            room_id=self.room.currentData() if mode == 'Room Utilization Schedule' else None,
+        )
+        for combo in (self.program, self.section, self.faculty):
+            combo.setEnabled(mode != 'Room Utilization Schedule')
+        self.main_card.title_label.setText(
+            mode+' — '+(self.room.currentText() if mode == 'Room Utilization Schedule' else self.section.currentText())
+        )
         self.main_card.subtitle.setText(self.win.term_name())
         self.headers=['Subject','Section','Faculty','Room','Day','Time']
         self.output=[[r['code'],r['section'],r['faculty'],r['room'],r['day'],f'{logic.fmt(r["start_min"])} – {logic.fmt(r["end_min"])}'] for r in self.report_rows]
-        room_count=db.row('SELECT COUNT(*) FROM classrooms')[0]
+        if mode == 'Room Utilization Schedule':
+            self.headers=['Room','Day','From','To','Status','Course','Section','Instructor']
+            self.output=[]
+            selected_room=self.room.currentData()
+            room_record=db.row('SELECT name FROM classrooms WHERE id=?',(selected_room,)) if selected_room is not None else None
+            unavailable={}
+            if selected_room is not None and db.row("SELECT 1 FROM sqlite_master WHERE type='table' AND name='unavailable'"):
+                unavailable={d:db.rows(
+                    "SELECT start_min,end_min FROM unavailable WHERE kind='room' AND resource_id=? AND day=?",
+                    (selected_room,d),
+                ) for d,_ in db.DAYS}
+            for day,_ in db.DAYS:
+                for start in range(logic.CAL_START,logic.CAL_END,30):
+                    end=start+30
+                    occupants=[r for r in self.report_rows if r['day']==day and logic.overlap(start,end,r['start_min'],r['end_min'])]
+                    blocked=any(logic.overlap(start,end,w['start_min'],w['end_min']) for w in unavailable.get(day,[]))
+                    status='Occupied' if occupants else 'Unavailable' if blocked else 'Available'
+                    self.output.append([
+                        room_record['name'] if room_record else '',
+                        day,logic.fmt(start),logic.fmt(end),status,
+                        '; '.join(r['code'] for r in occupants),
+                        '; '.join(r['section'] for r in occupants),
+                        '; '.join(r['faculty'] for r in occupants),
+                    ])
+        utilization_rooms=db.rows('SELECT id FROM classrooms')
+        if mode == 'Room Utilization Schedule':
+            room_id=self.room.currentData()
+            utilization_rooms=[r for r in utilization_rooms if r['id']==room_id] if room_id is not None else []
+        room_count=len(utilization_rooms)
         hours=(logic.CAL_END-logic.CAL_START)/60
         utilization=[]
         for d,_ in db.DAYS:
             # Merge occupied intervals per room, so overlaps cannot inflate occupancy.
             total=0
-            for room in db.rows('SELECT id FROM classrooms'):
+            for room in utilization_rooms:
                 intervals=sorted((max(logic.CAL_START,r['start_min']),min(logic.CAL_END,r['end_min'])) for r in rows if r['day']==d and r['room_id']==room['id'])
                 end=logic.CAL_START
                 for a,b in intervals:
                     total+=max(0,b-max(a,end)); end=max(end,b)
             utilization.append((d,round(100*total/(room_count*hours*60),1) if room_count else 0))
         self.chart.set_data(utilization)
+        self.chart_card.title_label.setText(
+            'Selected Room Utilization' if mode == 'Room Utilization Schedule' else 'Room Utilization'
+        )
         if mode=='Room Utilization':
             self.headers=['Day','Occupancy']; self.output=[[d,str(v)+'%'] for d,v in utilization]
         elif mode=='Faculty Teaching Load':
@@ -96,7 +144,8 @@ class ReportsPage(Page):
         self.banner.text.setText(f'{len(validation["issues"])} issues in this term. Export reflects current saved data.'); self.banner.text.show()
         from ui.widgets import set_kind
         set_kind(self.banner,'bad' if validation['critical'] else 'good')
-        self.summary.setText(f'Total subjects: {len({r["subject_id"] for r in self.report_rows})}\n\nWeekly class hours: {sum((r["end_min"]-r["start_min"])/60 for r in self.report_rows):g}\n\nRooms assigned: {len({r["room_id"] for r in self.report_rows})}\n\nAverage room utilization:\n{sum(v for _,v in utilization)/6:.1f}%')
+        summary_label='Average selected room utilization' if mode == 'Room Utilization Schedule' else 'Average room utilization'
+        self.summary.setText(f'Total subjects: {len({r["subject_id"] for r in self.report_rows})}\n\nWeekly class hours: {sum((r["end_min"]-r["start_min"])/60 for r in self.report_rows):g}\n\nRooms assigned: {len({r["room_id"] for r in self.report_rows})}\n\n{summary_label}:\n{sum(v for _,v in utilization)/6:.1f}%')
 
     def schedule_sheet_html(self, all_schedules=False):
         esc = lambda value: html.escape(str(value))
@@ -206,13 +255,130 @@ class ReportsPage(Page):
                     content = block_text(component["rows"])
                     cells.append(
                         f'<td rowspan="{span}" height="{max(18 * span, 36 * len(component["rows"]))}" '
-                        f'bgcolor="#fce8d4" align="center" valign="middle">'
-                        f'<font size="2">{content}</font></td>'
+                        f'bgcolor="#ffffff" align="center" valign="middle">'
+                        f'<font size="2" color="#000000">{content}</font></td>'
                     )
                 elif slot >= active_until[day]:
                     cells.append("<td></td>")
             table += "<tr>" + "".join(cells) + "</tr>"
         return head + table + "</table>"
+
+    def room_utilization_html(self, all_rooms=False):
+        esc = lambda value: html.escape(str(value))
+        rooms = db.rows('SELECT * FROM classrooms ORDER BY name') if all_rooms else (
+            [db.row('SELECT * FROM classrooms WHERE id=?', (self.room.currentData(),))]
+            if self.room.currentData() is not None else []
+        )
+        pages = []
+        slot_minutes = 30
+        slot_count = (logic.CAL_END - logic.CAL_START) // slot_minutes
+        rows = logic.schedule_rows(self.win.term_id())
+        unavailable = {day: [] for day in logic.DAY_CODES}
+        if db.row("SELECT 1 FROM sqlite_master WHERE type='table' AND name='unavailable'"):
+            for window in db.rows("SELECT resource_id,day,start_min,end_min FROM unavailable WHERE kind='room'"):
+                unavailable.setdefault(window['day'], []).append(window)
+
+        for room in rooms:
+            if room is None:
+                continue
+            room_rows = [r for r in rows if r['room_id'] == room['id']]
+            by_day = {day: [] for day in logic.DAY_CODES}
+            for day in logic.DAY_CODES:
+                for slot in range(slot_count):
+                    start = logic.CAL_START + slot * slot_minutes
+                    end = start + slot_minutes
+                    occupants = sorted(
+                        (r for r in room_rows if r['day'] == day and logic.overlap(
+                            start, end, r['start_min'], r['end_min']
+                        )),
+                        key=lambda r: (r['start_min'], r['code'], r['section']),
+                    )
+                    blocked = any(
+                        logic.overlap(start, end, window['start_min'], window['end_min'])
+                        for window in unavailable.get(day, [])
+                        if window['resource_id'] == room['id']
+                    )
+                    status = 'occupied' if occupants else 'unavailable' if blocked else 'available'
+                    signature = (status, tuple(r['id'] for r in occupants))
+                    if by_day[day] and by_day[day][-1]['signature'] == signature:
+                        by_day[day][-1]['end'] = slot + 1
+                    else:
+                        by_day[day].append({
+                            'start': slot, 'end': slot + 1, 'signature': signature, 'rows': occupants,
+                            'status': status,
+                        })
+
+            occupied_minutes = 0
+            for day in logic.DAY_CODES:
+                intervals = sorted(
+                    (max(logic.CAL_START, r['start_min']), min(logic.CAL_END, r['end_min']))
+                    for r in room_rows if r['day'] == day
+                )
+                end = logic.CAL_START
+                for start, finish in intervals:
+                    occupied_minutes += max(0, finish - max(start, end))
+                    end = max(end, finish)
+            available_minutes = len(logic.DAY_CODES) * (logic.CAL_END - logic.CAL_START)
+            utilization = 100 * occupied_minutes / available_minutes if available_minutes else 0
+            kind = 'Laboratory' if room['room_type'] == 'Laboratory' else 'Lecture room'
+            table = (
+                '<table width="100%" border="1" cellspacing="0" cellpadding="2">'
+                '<tr bgcolor="#e9edf3"><th width="12%">TIME</th>'
+                + ''.join(f'<th>{esc(name.upper())}</th>' for _, name in db.DAYS)
+                + '</tr>'
+            )
+            active_until = {day: 0 for day in logic.DAY_CODES}
+            components = {
+                day: {component['start']: component for component in day_components}
+                for day, day_components in by_day.items()
+            }
+            for slot in range(slot_count):
+                start = logic.CAL_START + slot * slot_minutes
+                finish = start + slot_minutes
+                cells = [f'<td height="18" align="center">{esc(logic.fmt(start))}–{esc(logic.fmt(finish))}</td>']
+                for day in logic.DAY_CODES:
+                    component = components[day].get(slot)
+                    if component:
+                        span = component['end'] - component['start']
+                        active_until[day] = component['end']
+                        if component['rows']:
+                            content = '<hr>'.join(
+                                f"<b>{esc(r['code'])} · {esc(r['section'])}</b><br>{esc(r['faculty'])}"
+                                for r in component['rows']
+                            )
+                            color = '#ffffff'
+                        elif component['status'] == 'unavailable':
+                            content = '<b>UNAVAILABLE</b>'
+                            color = '#ffffff'
+                        else:
+                            content = '<b>AVAILABLE</b>'
+                            color = '#ffffff'
+                        cells.append(
+                            f'<td rowspan="{span}" height="{max(18 * span, 36 * len(component["rows"]))}" '
+                            f'bgcolor="{color}" align="center" valign="middle">'
+                            f'<font size="2" color="#000000">{content}</font></td>'
+                        )
+                    elif slot >= active_until[day]:
+                        cells.append('<td></td>')
+                table += '<tr>' + ''.join(cells) + '</tr>'
+            table += '</table>'
+            pages.append(
+                '<div style="page-break-after: always">'
+                '<h2 align="center">ROOM UTILIZATION SCHEDULE</h2>'
+                f'<p align="center">{esc(self.win.term_name())}</p>'
+                '<table width="100%" cellspacing="0" cellpadding="4"><tr>'
+                f'<td><b>Room:</b> {esc(room["name"])}</td>'
+                f'<td><b>Type:</b> {esc(kind)}</td>'
+                f'<td><b>Capacity:</b> {esc(room["capacity"])}</td>'
+                f'<td><b>Occupied:</b> {occupied_minutes / 60:g} hours '
+                f'({utilization:.1f}%)</td>'
+                '</tr></table>'
+                + table
+                + '</div>'
+            )
+        if not pages:
+            return '<h2 align="center">ROOM UTILIZATION SCHEDULE</h2><p>Select a room to view its schedule.</p>'
+        return ''.join(pages)
 
     def save_schedule_sheet(self):
         documents = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)
@@ -223,7 +389,7 @@ class ReportsPage(Page):
         path = directory / f"ClassFlow-schedule-sheet-term-{self.win.term_id()}.pdf"
 
         document = QTextDocument()
-        document.setHtml(self.schedule_sheet_html(all_schedules=True))
+        document.setHtml(self.room_utilization_html(all_rooms=True))
         printer = QPrinter(QPrinter.HighResolution)
         printer.setOrientation(QPrinter.Landscape)
         printer.setOutputFormat(QPrinter.PdfFormat)
@@ -236,7 +402,9 @@ class ReportsPage(Page):
     def document(self):
         esc=lambda x:html.escape(str(x))
         doc=QTextDocument()
-        if self.report.currentText() in REPORTS[:4]:
+        if self.report.currentText() == 'Room Utilization Schedule':
+            doc.setHtml(self.room_utilization_html())
+        elif self.report.currentText() in REPORTS[:4]:
             doc.setHtml(self.schedule_sheet_html())
         else:
             doc.setHtml('<h1>ClassFlow</h1><h2>'+esc(self.report.currentText())+'</h2><p>'+esc(self.win.term_name())+'</p><p>'+esc(self.banner.title.text())+'</p><table border="1" cellspacing="0" cellpadding="6"><tr>'+''.join('<th>'+esc(h)+'</th>' for h in self.headers)+'</tr>'+''.join('<tr>'+''.join('<td>'+esc(v)+'</td>' for v in row)+'</tr>' for row in self.output)+'</table>')
