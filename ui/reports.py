@@ -1,61 +1,142 @@
-import csv
 import html
 import re
 from pathlib import Path
-from PyQt5.QtCore import QStandardPaths
-from PyQt5.QtGui import QTextDocument
+from PyQt5.QtCore import QStandardPaths, QRectF
+from PyQt5.QtGui import QPainter, QTextDocument
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QFileDialog
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 from ui.widgets import Page, Card, Combo, CalendarWidget, BarChart, Banner, button, labeled, label, make_table, text_item, fit_table
 import db
 import logic
 
 REPORTS=['Class Schedules','Faculty Schedules','Section Schedules','Room Utilization Schedule','Room Utilization','Faculty Teaching Load','Conflict Reports','Available Rooms']
+YEAR_LEVEL_COLORS = {
+    1: 'FCE4D6',
+    2: 'FFF2CC',
+    3: 'E2F0D9',
+    4: 'DDEBF7',
+    5: 'E4DFEC',
+    6: 'FCE4EC',
+}
+MULTI_YEAR_COLOR = 'D9D2E9'
+
+
+def section_year_level(section_name):
+    match = re.search(r'\b(\d+)\s*[A-Za-z]?$', section_name)
+    return int(match.group(1)) if match else None
+
+
+def year_level_label(number):
+    suffix = 'th' if 10 <= number % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(number % 10, 'th')
+    return f'{number}{suffix} year'
 
 
 class ReportsPage(Page):
     def __init__(self,win):
         super().__init__(win)
+        self.excel_button=button('Export Excel',slot=self.export_excel)
         self.add_header('MODULE 05','Timetable Generation and Reports','Generate, review, and export official schedules and academic utilization reports.',[
-            button('Print',slot=self.print_report),button('Export PDF',slot=self.export_pdf),button('Export CSV',slot=self.export_csv)])
+            button('Print',slot=self.print_report),button('Export PDF',slot=self.export_pdf),self.excel_button])
         card=Card(); self.lay.addWidget(card); row=QHBoxLayout(); card.body(margins=(18,18,18,18)).addLayout(row)
         self.report=Combo(); self.report.addItems(REPORTS); self.report.setCurrentIndex(3)
         self.program=Combo(); self.section=Combo(); self.faculty=Combo(); self.room=Combo()
         for title,w in [('Report Type',self.report),('Program',self.program),('Section',self.section),('Faculty',self.faculty),('Classroom',self.room)]:
             row.addWidget(labeled(title,w),1)
-        self.report.currentIndexChanged.connect(self.render); self.program.currentIndexChanged.connect(self.populate_sections)
+        self.report.currentIndexChanged.connect(self.report_changed); self.program.currentIndexChanged.connect(self.populate_sections)
         for w in [self.section,self.faculty,self.room]: w.currentIndexChanged.connect(self.render)
         columns=QHBoxLayout(); self.lay.addLayout(columns)
         self.main_card=Card('Weekly Timetable','Selected academic term'); columns.addWidget(self.main_card,5)
         body=self.main_card.body(); self.calendar=CalendarWidget(); body.addWidget(self.calendar)
         self.table=make_table(['Subject','Section','Faculty','Room','Day','Time']); body.addWidget(self.table)
-        self.banner=Banner(); body.addWidget(self.banner)
+        self.resolve_button=button('Resolve conflicts','smallPrimary',lambda: self.win.go('validation'))
+        self.resolve_button.setVisible(False)
+        self.banner=Banner(right=self.resolve_button); body.addWidget(self.banner)
         right=QVBoxLayout(); columns.addLayout(right,1)
         chart=Card('Room Utilization','Weekly occupancy rate'); self.chart_card=chart; self.chart=BarChart(); chart.body().addWidget(self.chart); right.addWidget(chart)
         summary=Card('Schedule Summary'); self.summary=label('',wrap=True); summary.body().addWidget(self.summary); right.addWidget(summary); right.addStretch(); self.finish()
 
     def refresh(self):
-        for combo,sql,alltext in [(self.program,'SELECT id,name FROM programs ORDER BY code','All programs'),(self.faculty,'SELECT id,name FROM faculty ORDER BY name','All faculty'),(self.room,'SELECT id,name FROM classrooms ORDER BY name','All classrooms')]:
-            keep=combo.currentData(); combo.blockSignals(True); combo.clear(); combo.addItem(alltext,None)
-            for r in db.rows(sql): combo.addItem(r[1],r[0])
-            index=combo.findData(keep)
-            if index < 0 and combo is self.room and combo.count() > 1:
-                index=1
-            combo.setCurrentIndex(max(0,index)); combo.blockSignals(False)
+        if self.report.currentText() == 'Room Utilization Schedule':
+            for combo in (self.program, self.section, self.faculty):
+                combo.blockSignals(True)
+                combo.setCurrentIndex(-1)
+                combo.blockSignals(False)
+        include_all = self.report.currentText() not in REPORTS[:3]
+        self._set_filter_options(
+            self.program, db.rows('SELECT id,name FROM programs ORDER BY code'),
+            'All programs', include_all,
+        )
+        self._set_filter_options(
+            self.faculty, db.rows('SELECT id,name FROM faculty ORDER BY name'),
+            'All faculty', include_all,
+        )
+        self._set_filter_options(
+            self.room, db.rows('SELECT id,name FROM classrooms ORDER BY name'),
+            'All rooms', self.report.currentText() != 'Room Utilization Schedule',
+        )
+        self.populate_sections()
+
+    def _set_filter_options(self, combo, records, all_label, include_all, preferred_text=None):
+        selected = combo.currentData()
+        combo.blockSignals(True)
+        combo.clear()
+        if include_all:
+            combo.addItem(all_label, None)
+        for record in records:
+            combo.addItem(record['name'], record['id'])
+        index = combo.findData(selected)
+        if index < 0 and preferred_text is not None:
+            index = combo.findText(preferred_text)
+        combo.setCurrentIndex(index if index >= 0 else 0)
+        combo.blockSignals(False)
+
+    def report_changed(self):
+        room_schedule = self.report.currentText() == 'Room Utilization Schedule'
+        if room_schedule:
+            for combo in (self.program, self.section, self.faculty):
+                combo.blockSignals(True)
+                combo.setCurrentIndex(-1)
+                combo.blockSignals(False)
+        else:
+            self.room.blockSignals(True)
+            self.room.setCurrentIndex(-1)
+            self.room.blockSignals(False)
+        include_all = self.report.currentText() not in REPORTS[:3]
+        self._set_filter_options(
+            self.program, db.rows('SELECT id,name FROM programs ORDER BY code'),
+            'All programs', include_all,
+        )
+        self._set_filter_options(
+            self.faculty, db.rows('SELECT id,name FROM faculty ORDER BY name'),
+            'All faculty', include_all,
+        )
+        self._set_filter_options(
+            self.room, db.rows('SELECT id,name FROM classrooms ORDER BY name'),
+            'All rooms', not room_schedule,
+        )
         self.populate_sections()
 
     def populate_sections(self):
-        keep=self.section.currentData(); self.section.blockSignals(True); self.section.clear(); self.section.addItem('All sections',None)
+        include_all = self.report.currentText() not in REPORTS[:3]
         pid=self.program.currentData()
-        for r in db.rows('SELECT id,name FROM sections'+(' WHERE program_id=?' if pid else '')+' ORDER BY name',(pid,) if pid else ()):
-            self.section.addItem(r['name'],r['id'])
-        self.section.setCurrentIndex(max(0,self.section.findData(keep)) if keep is not None else max(0,self.section.findText('BSCS 2A'))); self.section.blockSignals(False); self.render()
+        records = db.rows(
+            'SELECT id,name FROM sections'+(' WHERE program_id=?' if pid else '')+' ORDER BY name',
+            (pid,) if pid else (),
+        )
+        self._set_filter_options(
+            self.section, records, 'All sections', include_all, preferred_text='BSCS 2A',
+        )
+        self.render()
 
     def render(self):
         if not hasattr(self,'calendar'): return
         rows=logic.schedule_rows(self.win.term_id()); pid=self.program.currentData()
         sections={r[0] for r in db.rows('SELECT id FROM sections WHERE program_id=?',(pid,))} if pid else None
         mode=self.report.currentText()
+        self.excel_button.setEnabled(mode in REPORTS[:4])
         if mode == 'Room Utilization Schedule':
             room_id = self.room.currentData()
             self.report_rows = [r for r in rows if room_id is not None and r['room_id'] == room_id]
@@ -142,6 +223,7 @@ class ReportsPage(Page):
         validation=logic.validate_term(self.win.term_id())
         self.banner.title.setText('Resolve critical conflicts before using final timetables.' if validation['critical'] else 'Timetable validated. No critical conflicts detected.')
         self.banner.text.setText(f'{len(validation["issues"])} issues in this term. Export reflects current saved data.'); self.banner.text.show()
+        self.resolve_button.setVisible(validation['critical'] > 0)
         from ui.widgets import set_kind
         set_kind(self.banner,'bad' if validation['critical'] else 'good')
         summary_label='Average selected room utilization' if mode == 'Room Utilization Schedule' else 'Average room utilization'
@@ -200,10 +282,7 @@ class ReportsPage(Page):
         match = re.search(r"\b(\d+)\s*[A-Za-z]?$", section_name)
         if match:
             year_number = int(match.group(1))
-            suffix = "th" if 10 <= year_number % 100 <= 20 else {
-                1: "st", 2: "nd", 3: "rd"
-            }.get(year_number % 10, "th")
-            year = f"{year_number}{suffix} year"
+            year = year_level_label(year_number)
 
         meta = [
             f"<b>Program:</b> {esc(program_name)}",
@@ -269,6 +348,7 @@ class ReportsPage(Page):
             [db.row('SELECT * FROM classrooms WHERE id=?', (self.room.currentData(),))]
             if self.room.currentData() is not None else []
         )
+        rooms = [room for room in rooms if room is not None]
         pages = []
         slot_minutes = 30
         slot_count = (logic.CAL_END - logic.CAL_START) // slot_minutes
@@ -278,9 +358,7 @@ class ReportsPage(Page):
             for window in db.rows("SELECT resource_id,day,start_min,end_min FROM unavailable WHERE kind='room'"):
                 unavailable.setdefault(window['day'], []).append(window)
 
-        for room in rooms:
-            if room is None:
-                continue
+        for room_index, room in enumerate(rooms):
             room_rows = [r for r in rows if r['room_id'] == room['id']]
             by_day = {day: [] for day in logic.DAY_CODES}
             for day in logic.DAY_CODES:
@@ -300,7 +378,7 @@ class ReportsPage(Page):
                     )
                     status = 'occupied' if occupants else 'unavailable' if blocked else 'available'
                     signature = (status, tuple(r['id'] for r in occupants))
-                    if by_day[day] and by_day[day][-1]['signature'] == signature:
+                    if status != 'available' and by_day[day] and by_day[day][-1]['signature'] == signature:
                         by_day[day][-1]['end'] = slot + 1
                     else:
                         by_day[day].append({
@@ -308,18 +386,7 @@ class ReportsPage(Page):
                             'status': status,
                         })
 
-            occupied_minutes = 0
-            for day in logic.DAY_CODES:
-                intervals = sorted(
-                    (max(logic.CAL_START, r['start_min']), min(logic.CAL_END, r['end_min']))
-                    for r in room_rows if r['day'] == day
-                )
-                end = logic.CAL_START
-                for start, finish in intervals:
-                    occupied_minutes += max(0, finish - max(start, end))
-                    end = max(end, finish)
-            available_minutes = len(logic.DAY_CODES) * (logic.CAL_END - logic.CAL_START)
-            utilization = 100 * occupied_minutes / available_minutes if available_minutes else 0
+            sections = ', '.join(sorted({row['section'] for row in room_rows})) or 'None'
             kind = 'Laboratory' if room['room_type'] == 'Laboratory' else 'Lecture room'
             table = (
                 '<table width="100%" border="1" cellspacing="0" cellpadding="2">'
@@ -351,7 +418,7 @@ class ReportsPage(Page):
                             content = '<b>UNAVAILABLE</b>'
                             color = '#ffffff'
                         else:
-                            content = '<b>AVAILABLE</b>'
+                            content = ''
                             color = '#ffffff'
                         cells.append(
                             f'<td rowspan="{span}" height="{max(18 * span, 36 * len(component["rows"]))}" '
@@ -362,16 +429,16 @@ class ReportsPage(Page):
                         cells.append('<td></td>')
                 table += '<tr>' + ''.join(cells) + '</tr>'
             table += '</table>'
+            page_break = ' style="page-break-after: always"' if room_index < len(rooms) - 1 else ''
             pages.append(
-                '<div style="page-break-after: always">'
+                f'<div{page_break}>'
                 '<h2 align="center">ROOM UTILIZATION SCHEDULE</h2>'
                 f'<p align="center">{esc(self.win.term_name())}</p>'
                 '<table width="100%" cellspacing="0" cellpadding="4"><tr>'
                 f'<td><b>Room:</b> {esc(room["name"])}</td>'
                 f'<td><b>Type:</b> {esc(kind)}</td>'
                 f'<td><b>Capacity:</b> {esc(room["capacity"])}</td>'
-                f'<td><b>Occupied:</b> {occupied_minutes / 60:g} hours '
-                f'({utilization:.1f}%)</td>'
+                f'<td><b>Sections:</b> {esc(sections)}</td>'
                 '</tr></table>'
                 + table
                 + '</div>'
@@ -410,22 +477,283 @@ class ReportsPage(Page):
             doc.setHtml('<h1>ClassFlow</h1><h2>'+esc(self.report.currentText())+'</h2><p>'+esc(self.win.term_name())+'</p><p>'+esc(self.banner.title.text())+'</p><table border="1" cellspacing="0" cellpadding="6"><tr>'+''.join('<th>'+esc(h)+'</th>' for h in self.headers)+'</tr>'+''.join('<tr>'+''.join('<td>'+esc(v)+'</td>' for v in row)+'</tr>' for row in self.output)+'</table>')
         return doc
 
+    def print_schedule_pdf(self, printer, document):
+        printer.setPaperSize(QPrinter.A4)
+        printer.setOrientation(QPrinter.Landscape)
+        printer.setPageMargins(8, 8, 8, 8, QPrinter.Millimeter)
+        page = printer.pageRect(QPrinter.Point)
+        document.setTextWidth(page.width())
+        size = document.documentLayout().documentSize()
+        scale = min(1.0, page.width() / size.width(), page.height() / size.height())
+
+        painter = QPainter(printer)
+        painter.setWindow(0, 0, round(page.width()), round(page.height()))
+        painter.translate(
+            (page.width() - size.width() * scale) / 2,
+            (page.height() - size.height() * scale) / 2,
+        )
+        painter.scale(scale, scale)
+        document.drawContents(painter, QRectF(0, 0, size.width(), size.height()))
+        painter.end()
+
     def export_pdf(self):
         default_name = "ClassFlow-schedule-sheet.pdf" if self.report.currentText() in REPORTS[:4] else "ClassFlow-report.pdf"
         path,_=QFileDialog.getSaveFileName(self,'Export PDF',default_name,'PDF (*.pdf)')
         if path:
-            printer=QPrinter(QPrinter.HighResolution); printer.setOrientation(QPrinter.Landscape); printer.setOutputFormat(QPrinter.PdfFormat); printer.setOutputFileName(path); self.document().print_(printer); self.win.notify('PDF report exported.')
+            printer=QPrinter(QPrinter.HighResolution); printer.setOrientation(QPrinter.Landscape); printer.setOutputFormat(QPrinter.PdfFormat); printer.setOutputFileName(path)
+            document = self.document()
+            if self.report.currentText() in REPORTS[:4]:
+                self.print_schedule_pdf(printer, document)
+            else:
+                document.print_(printer)
+            self.win.notify('PDF report exported.')
 
     def print_report(self):
         printer=QPrinter(QPrinter.HighResolution); printer.setOrientation(QPrinter.Landscape)
         if QPrintDialog(printer,self).exec_(): self.document().print_(printer)
 
-    def export_csv(self):
-        path,_=QFileDialog.getSaveFileName(self,'Export CSV','ClassFlow-report.csv','CSV (*.csv)')
-        if path:
-            def safe(v):
-                text=str(v)
-                return "'"+text if text.startswith(('=','+','-','@','\t','\r')) else text
-            with open(path,'w',newline='',encoding='utf-8-sig') as f:
-                w=csv.writer(f); w.writerow(self.headers); w.writerows([[safe(v) for v in row] for row in self.output])
-            self.win.notify('CSV report exported.')
+    def export_excel(self):
+        if self.report.currentText() not in REPORTS[:4]:
+            self.win.notify('Excel schedule export is available for schedule reports.','error')
+            return
+        default_name = "ClassFlow-schedule-sheet.xlsx"
+        path,_=QFileDialog.getSaveFileName(self,'Export Excel',default_name,'Excel Workbook (*.xlsx)')
+        if not path:
+            return
+        if not path.lower().endswith('.xlsx'):
+            path += '.xlsx'
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = 'Class Schedule'
+        sheet.sheet_view.showGridLines = True
+        sheet.page_setup.orientation = 'landscape'
+        sheet.page_setup.fitToWidth = 1
+        sheet.page_setup.fitToHeight = 1
+        sheet.sheet_properties.pageSetUpPr.fitToPage = True
+        sheet.page_margins.left = 0.25
+        sheet.page_margins.right = 0.25
+        sheet.page_margins.top = 0.4
+        sheet.page_margins.bottom = 0.4
+        sheet.column_dimensions['A'].width = 18
+        for column in range(2, 8):
+            sheet.column_dimensions[get_column_letter(column)].width = 25
+
+        navy = '17365D'
+        blue = 'D9EAF7'
+        border_side = Side(style='thin', color='202020')
+        cell_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
+        center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        title_fill = PatternFill('solid', fgColor=navy)
+        header_fill = PatternFill('solid', fgColor=blue)
+        title = 'ROOM UTILIZATION SCHEDULE' if self.report.currentText() == 'Room Utilization Schedule' else 'CLASS SCHEDULE'
+        sheet.merge_cells('A1:G1')
+        sheet['A1'] = title
+        sheet['A1'].font = Font(name='Arial', size=16, bold=True, color='FFFFFF')
+        sheet['A1'].fill = title_fill
+        sheet['A1'].alignment = center
+        sheet.row_dimensions[1].height = 30
+        sheet.merge_cells('A2:G2')
+        sheet['A2'] = self.win.term_name()
+        sheet['A2'].font = Font(name='Arial', size=11, italic=True, color=navy)
+        sheet['A2'].alignment = center
+        sheet.row_dimensions[2].height = 22
+
+        section_ids = {row['section_id'] for row in self.report_rows}
+        section_id = self.section.currentData()
+        if section_id is None and len(section_ids) == 1:
+            section_id = next(iter(section_ids))
+        section = db.row(
+            'SELECT sec.name, p.name AS program_name FROM sections sec '
+            'JOIN programs p ON p.id=sec.program_id WHERE sec.id=?',
+            (section_id,),
+        ) if section_id is not None else None
+        program_name = section['program_name'] if section else (
+            self.program.currentText() if self.program.currentData() is not None else 'All programs'
+        )
+        section_name = section['name'] if section else 'All sections'
+        match = re.search(r'\b(\d+)\s*[A-Za-z]?$', section_name)
+        year = ''
+        if match:
+            number = int(match.group(1))
+            year = year_level_label(number)
+        if self.report.currentText() == 'Room Utilization Schedule':
+            meta = [
+                f'Room: {self.room.currentText()}',
+                f'Type: {db.row("SELECT room_type FROM classrooms WHERE id=?", (self.room.currentData(),))["room_type"] if self.room.currentData() is not None else ""}',
+                f'Sections: {", ".join(sorted({row["section"] for row in self.report_rows})) or "None"}',
+            ]
+        else:
+            meta = [f'Program: {program_name}', f'Year: {year}', f'Section: {section_name}']
+        for start_column, end_column, value in ((1, 2, meta[0]), (3, 4, meta[1]), (5, 7, meta[2])):
+            sheet.merge_cells(start_row=4, start_column=start_column, end_row=4, end_column=end_column)
+            cell = sheet.cell(4, start_column, value)
+            cell.font = Font(name='Arial', size=10, bold=True)
+            cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+        sheet.row_dimensions[4].height = 30
+
+        headers = ['PERIOD'] + [name.upper() for _, name in db.DAYS]
+        for column, value in enumerate(headers, 1):
+            cell = sheet.cell(6, column, value)
+            cell.font = Font(name='Arial', size=10, bold=True, color=navy)
+            cell.fill = header_fill
+            cell.alignment = center
+            cell.border = cell_border
+        sheet.row_dimensions[6].height = 24
+
+        slot_minutes = 30
+        slot_count = (logic.CAL_END - logic.CAL_START) // slot_minutes
+        day_entries = {day: [] for day in logic.DAY_CODES}
+        for row in self.report_rows:
+            if row['day'] not in day_entries:
+                continue
+            start = max(logic.CAL_START, row['start_min'])
+            end = min(logic.CAL_END, row['end_min'])
+            if end <= start:
+                continue
+            start_slot = max(0, (start - logic.CAL_START) // slot_minutes)
+            end_slot = min(slot_count, (end - logic.CAL_START + slot_minutes - 1) // slot_minutes)
+            if end_slot > start_slot:
+                day_entries[row['day']].append((start_slot, end_slot, row))
+
+        components_by_day = {}
+        for day, entries in day_entries.items():
+            components = []
+            for start_slot, end_slot, row in sorted(entries, key=lambda item: (item[0], item[1], item[2]['code'])):
+                if components and start_slot < components[-1]['end']:
+                    components[-1]['end'] = max(components[-1]['end'], end_slot)
+                    components[-1]['rows'].append(row)
+                else:
+                    components.append({'start': start_slot, 'end': end_slot, 'rows': [row]})
+            components_by_day[day] = components
+
+        year_levels = sorted({
+            level for row in self.report_rows
+            if (level := section_year_level(row['section'])) is not None
+        })
+        has_multi_year_component = any(
+            len({
+                level for row in component['rows']
+                if (level := section_year_level(row['section'])) is not None
+            }) > 1
+            for components in components_by_day.values()
+            for component in components
+        )
+        sheet['A5'] = 'YEAR LEVEL'
+        sheet['A5'].font = Font(name='Arial', size=9, bold=True, color=navy)
+        sheet['A5'].alignment = center
+        sheet['A5'].border = cell_border
+        legend = [
+            (year_level_label(number), YEAR_LEVEL_COLORS.get(number, 'E7E6E6'))
+            for number in year_levels
+        ]
+        if has_multi_year_component:
+            legend.append(('Multiple years', MULTI_YEAR_COLOR))
+        for column, (text, color) in enumerate(legend, 2):
+            cell = sheet.cell(5, column, text)
+            cell.font = Font(name='Arial', size=9, bold=True)
+            cell.fill = PatternFill('solid', fgColor=color)
+            cell.alignment = center
+            cell.border = cell_border
+        sheet.row_dimensions[5].height = 22
+
+        component_cells = {
+            day: {component['start']: component for component in components_by_day[day]}
+            for day, _ in db.DAYS
+        }
+        room_unavailable = {}
+        room_id = self.room.currentData()
+        if self.report.currentText() == 'Room Utilization Schedule' and room_id is not None:
+            if db.row("SELECT 1 FROM sqlite_master WHERE type='table' AND name='unavailable'"):
+                room_unavailable = {
+                    day: db.rows(
+                        "SELECT start_min,end_min FROM unavailable WHERE kind='room' AND resource_id=? AND day=?",
+                        (room_id, day),
+                    )
+                    for day in logic.DAY_CODES
+                }
+        unavailable_cells = {}
+        for day in logic.DAY_CODES:
+            components = []
+            run_start = None
+            for slot in range(slot_count + 1):
+                blocked = False
+                if slot < slot_count:
+                    start = logic.CAL_START + slot * slot_minutes
+                    end = start + slot_minutes
+                    occupied = any(
+                        item['start'] <= slot < item['end']
+                        for item in components_by_day[day]
+                    )
+                    blocked = not occupied and any(
+                        logic.overlap(start, end, window['start_min'], window['end_min'])
+                        for window in room_unavailable.get(day, [])
+                    )
+                if blocked and run_start is None:
+                    run_start = slot
+                elif not blocked and run_start is not None:
+                    components.append({'start': run_start, 'end': slot})
+                    run_start = None
+            unavailable_cells[day] = {item['start']: item for item in components}
+
+        active_until = {day: 0 for day in logic.DAY_CODES}
+        for slot in range(slot_count):
+            worksheet_row = 7 + slot
+            start = logic.CAL_START + slot * slot_minutes
+            end = start + slot_minutes
+            time_cell = sheet.cell(worksheet_row, 1, f'{logic.fmt(start)}–{logic.fmt(end)}')
+            time_cell.font = Font(name='Arial', size=9)
+            time_cell.alignment = center
+            time_cell.border = cell_border
+            sheet.row_dimensions[worksheet_row].height = 27
+            for day, _ in db.DAYS:
+                column = logic.DAY_CODES.index(day) + 2
+                cell = sheet.cell(worksheet_row, column)
+                cell.alignment = center
+                cell.border = cell_border
+                component = component_cells[day].get(slot)
+                if component:
+                    span = component['end'] - component['start']
+                    active_until[day] = component['end']
+                    blocks = []
+                    for row in component['rows']:
+                        room_kind = 'LAB' if row['room_type'] == 'Laboratory' else 'LEC'
+                        blocks.append(f"{row['code']} · {row['section']}\n{row['faculty']}\n{row['room']} ({room_kind})")
+                    cell.value = '\n\n'.join(blocks)
+                    cell.font = Font(name='Arial', size=9, bold=True, color='000000')
+                    levels = {
+                        level for row in component['rows']
+                        if (level := section_year_level(row['section'])) is not None
+                    }
+                    if len(levels) > 1:
+                        cell.fill = PatternFill('solid', fgColor=MULTI_YEAR_COLOR)
+                    elif levels:
+                        cell.fill = PatternFill(
+                            'solid',
+                            fgColor=YEAR_LEVEL_COLORS.get(next(iter(levels)), 'E7E6E6'),
+                        )
+                    if span > 1:
+                        sheet.merge_cells(start_row=worksheet_row, start_column=column, end_row=worksheet_row + span - 1, end_column=column)
+                    sheet.row_dimensions[worksheet_row].height = max(
+                        sheet.row_dimensions[worksheet_row].height or 27,
+                        27,
+                        42 * len(blocks) / span,
+                    )
+                elif slot >= active_until[day]:
+                    unavailable_component = unavailable_cells[day].get(slot)
+                    if unavailable_component:
+                        span = unavailable_component['end'] - unavailable_component['start']
+                        active_until[day] = unavailable_component['end']
+                        cell.value = 'UNAVAILABLE'
+                        cell.font = Font(name='Arial', size=9, bold=True, color='9C0006')
+                        if span > 1:
+                            sheet.merge_cells(start_row=worksheet_row, start_column=column, end_row=worksheet_row + span - 1, end_column=column)
+
+        sheet.print_title_rows = '1:6'
+        sheet.print_area = f'A1:G{6 + slot_count}'
+        try:
+            workbook.save(path)
+        except OSError as error:
+            self.win.notify(f'Excel schedule could not be exported: {error}', 'error')
+            return
+        self.win.notify('Excel schedule exported.')

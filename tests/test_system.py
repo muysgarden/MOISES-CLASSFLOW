@@ -3,6 +3,7 @@ os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 import unittest
 from unittest.mock import patch
 import tempfile
+from openpyxl import load_workbook
 from PyQt5.QtWidgets import QApplication, QSizePolicy, QPushButton
 from PyQt5.QtPrintSupport import QPrinter
 from PyQt5.QtTest import QTest
@@ -107,6 +108,13 @@ class SystemTests(unittest.TestCase):
         room=db.row('SELECT id FROM classrooms WHERE name="Room 103"')['id']
         reports.room.setCurrentIndex(reports.room.findData(room))
         reports.report.setCurrentIndex(reports.report.findText('Room Utilization Schedule'))
+        self.assertEqual(reports.program.currentText(), 'All programs')
+        self.assertEqual(reports.section.currentText(), 'All sections')
+        self.assertEqual(reports.faculty.currentText(), 'All faculty')
+        self.assertTrue(all(not combo.isEnabled() for combo in (
+            reports.program, reports.section, reports.faculty,
+        )))
+        self.assertFalse(any(reports.room.itemText(i).lower().startswith('all') for i in range(reports.room.count())))
         reports.program.setCurrentIndex(reports.program.findData(
             db.row('SELECT id FROM programs WHERE code="BSIT"')['id']
         ))
@@ -135,7 +143,14 @@ class SystemTests(unittest.TestCase):
         self.assertIn('color="#000000"',sheet)
         self.assertNotIn('#e8eff8',sheet)
         self.assertNotIn('#fce8d4',sheet)
-        self.assertIn('AVAILABLE',sheet)
+        self.assertNotIn('<b>AVAILABLE</b>',sheet)
+        self.assertIn('>TIME</th>',sheet)
+        self.assertIn('>MONDAY</th>',sheet)
+        self.assertIn(
+            '<td rowspan="1" height="18" bgcolor="#ffffff" align="center" valign="middle">'
+            '<font size="2" color="#000000"></font></td>',
+            sheet,
+        )
         self.assertIn('UNAVAILABLE',sheet)
         self.assertIn('BSCS 1A',sheet)
         self.assertIn('Dr. Elena Santos',sheet)
@@ -154,11 +169,46 @@ class SystemTests(unittest.TestCase):
     def test_exports_and_auth_disk_persistence(self):
         win=MainWindow(); reports=win.pages['reports']; reports.refresh()
         with tempfile.TemporaryDirectory() as directory:
-            pdf=directory+'/report.pdf'; csv_path=directory+'/report.csv'
+            pdf=os.path.join(directory,'report.pdf')
+            excel_path=os.path.join(directory,'schedule.xlsx')
+            reports.room.setCurrentIndex(reports.room.findData(
+                db.row('SELECT id FROM classrooms WHERE name="Room 103"')['id']
+            ))
             with patch('ui.reports.QFileDialog.getSaveFileName',return_value=(pdf,'PDF')): reports.export_pdf()
-            with patch('ui.reports.QFileDialog.getSaveFileName',return_value=(csv_path,'CSV')): reports.export_csv()
+            with patch('ui.reports.QFileDialog.getSaveFileName',return_value=(excel_path,'Excel')): reports.export_excel()
             self.assertGreater(os.path.getsize(pdf),1000)
-            with open(csv_path,encoding='utf-8-sig') as f: self.assertIn('Room,Day,From,To,Status,Course,Section,Instructor',f.read())
+            workbook=load_workbook(excel_path,data_only=True)
+            sheet=workbook['Class Schedule']
+            self.assertEqual(sheet['A1'].value,'ROOM UTILIZATION SCHEDULE')
+            self.assertEqual(sheet['A6'].value,'PERIOD')
+            self.assertEqual(sheet['B6'].value,'MONDAY')
+            self.assertEqual(sheet['A7'].value, f'{logic.fmt(logic.CAL_START)}–{logic.fmt(logic.CAL_START+30)}')
+            self.assertTrue(sheet.merged_cells.ranges)
+            self.assertIsNone(sheet.freeze_panes)
+            self.assertTrue(sheet.sheet_view.showGridLines)
+            self.assertIn('1st year', [sheet.cell(5, column).value for column in range(2, 8)])
+            self.assertIn('2nd year', [sheet.cell(5, column).value for column in range(2, 8)])
+            year_fills = {
+                cell.fill.fgColor.rgb[-6:]
+                for row in sheet.iter_rows(min_row=7, min_col=2, max_col=7)
+                for cell in row
+                if cell.value and cell.fill.fgColor.type == 'rgb'
+            }
+            self.assertTrue({'FCE4D6', 'FFF2CC'}.issubset(year_fills))
+            workbook.close()
+            reports.report.setCurrentIndex(reports.report.findText('Section Schedules'))
+            class_excel_path=os.path.join(directory,'class-schedule.xlsx')
+            with patch('ui.reports.QFileDialog.getSaveFileName',return_value=(class_excel_path,'Excel')): reports.export_excel()
+            workbook=load_workbook(class_excel_path,data_only=True)
+            sheet=workbook['Class Schedule']
+            self.assertEqual(sheet['A1'].value,'CLASS SCHEDULE')
+            self.assertIn('Section:',sheet['E4'].value)
+            self.assertTrue(any(
+                isinstance(sheet.cell(row,column).value,str) and ' · ' in sheet.cell(row,column).value
+                for row in range(7,sheet.max_row+1)
+                for column in range(2,8)
+            ))
+            workbook.close()
         win.close()
         db.conn.close()
         with tempfile.TemporaryDirectory() as directory:
@@ -166,6 +216,24 @@ class SystemTests(unittest.TestCase):
             db.init(path); auth.init(); self.assertTrue(auth.verify('admin','persistent-password')); db.conn.close()
         db.init(':memory:')
         # tearDown closes the connection.
+
+    def test_schedule_report_filters_only_offer_specific_choices(self):
+        win=MainWindow(); reports=win.pages['reports']; reports.refresh()
+        for report_name in ('Class Schedules', 'Faculty Schedules', 'Section Schedules'):
+            reports.report.setCurrentIndex(reports.report.findText(report_name))
+            for combo in (reports.program, reports.section, reports.faculty):
+                self.assertTrue(all(combo.itemData(i) is not None for i in range(combo.count())))
+                self.assertTrue(all(not combo.itemText(i).lower().startswith('all') for i in range(combo.count())))
+                self.assertIsNotNone(combo.currentData())
+
+        reports.report.setCurrentIndex(reports.report.findText('Room Utilization Schedule'))
+        self.assertEqual(reports.program.currentText(), 'All programs')
+        self.assertEqual(reports.section.currentText(), 'All sections')
+        self.assertEqual(reports.faculty.currentText(), 'All faculty')
+        self.assertTrue(all(not combo.isEnabled() for combo in (
+            reports.program, reports.section, reports.faculty,
+        )))
+        win.close()
 
     def test_all_pages_and_report(self):
         win=MainWindow(); win.show(); app.processEvents()
@@ -192,6 +260,16 @@ class SystemTests(unittest.TestCase):
         # Capture each actual UI for visual inspection.
         for key in win.pages:
             win.go(key); app.processEvents(); win.grab().save(os.path.join(tempfile.gettempdir(),'classflow-'+key+'.png'))
+        win.close()
+
+    def test_report_conflict_warning_opens_validation(self):
+        win=MainWindow(); win.show(); win.go('reports'); app.processEvents()
+        reports=win.pages['reports']
+        self.assertIn('Resolve critical conflicts',reports.banner.title.text())
+        self.assertTrue(reports.resolve_button.isVisible())
+        QTest.mouseClick(reports.resolve_button,Qt.LeftButton)
+        self.assertEqual(win.stack.currentWidget(),win.pages['validation'])
+        self.assertGreater(win.pages['validation'].result['critical'],0)
         win.close()
 
 
