@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import QApplication, QSizePolicy, QPushButton
 from PyQt5.QtPrintSupport import QPrinter
 from PyQt5.QtTest import QTest
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QTextTable
 import db
 import auth
 import logic
@@ -174,7 +175,28 @@ class SystemTests(unittest.TestCase):
             reports.room.setCurrentIndex(reports.room.findData(
                 db.row('SELECT id FROM classrooms WHERE name="Room 103"')['id']
             ))
-            with patch('ui.reports.QFileDialog.getSaveFileName',return_value=(pdf,'PDF')): reports.export_pdf()
+            schedule_html = reports.room_utilization_html()
+            self.assertIn('<th width="15.00%" nowrap="nowrap">FRIDAY</th>', schedule_html)
+            self.assertIn('align="center" nowrap="nowrap">', schedule_html)
+            with patch('ui.reports.QFileDialog.getSaveFileName',return_value=(pdf,'PDF')):
+                with patch.object(
+                    reports, 'print_schedule_pdf', wraps=reports.print_schedule_pdf
+                ) as pdf_layout:
+                    reports.export_pdf()
+            pdf_document=pdf_layout.call_args.args[1]
+            frames=[pdf_document.rootFrame()]
+            grid_tables=[]
+            while frames:
+                frame=frames.pop()
+                for child in frame.childFrames():
+                    if isinstance(child,QTextTable) and child.columns()==len(db.DAYS)+1:
+                        grid_tables.append(child)
+                    frames.append(child)
+            self.assertTrue(grid_tables)
+            self.assertGreaterEqual(
+                pdf_document.documentLayout().frameBoundingRect(grid_tables[0]).width(),
+                pdf_document.textWidth()*0.95,
+            )
             with patch('ui.reports.QFileDialog.getSaveFileName',return_value=(excel_path,'Excel')): reports.export_excel()
             self.assertGreater(os.path.getsize(pdf),1000)
             workbook=load_workbook(excel_path,data_only=True)
@@ -248,15 +270,29 @@ class SystemTests(unittest.TestCase):
         self.assertIn('>MONDAY</th>',sheet)
         self.assertIn('BSCS 2A',sheet)
         self.assertIn('2nd year',sheet)
-        self.assertEqual(sheet.count('<td height="18" align="center">'),26)
+        self.assertEqual(sheet.count('<td height="18" align="center" nowrap="nowrap">'),26)
         self.assertIn('rowspan=',sheet)
         for row in reports.report_rows:
             for key in ('code','section','faculty','room'):
                 self.assertIn(row[key],sheet)
         self.assertEqual(reports.calendar.sizePolicy().verticalPolicy(),QSizePolicy.Fixed)
         self.assertNotIn('Generate Timetable',[b.text() for b in reports.findChildren(QPushButton)])
-        printer=QPrinter(); printer.setOutputFormat(QPrinter.PdfFormat); printer.setOutputFileName(os.path.join(tempfile.gettempdir(),'classflow-report-test.pdf')); reports.document().print_(printer)
-        self.assertGreater(os.path.getsize(os.path.join(tempfile.gettempdir(),'classflow-report-test.pdf')),1000)
+        pdf_path=os.path.join(tempfile.gettempdir(),'classflow-report-test.pdf')
+        printer=QPrinter(QPrinter.HighResolution); printer.setOutputFormat(QPrinter.PdfFormat); printer.setOutputFileName(pdf_path)
+        document=reports.document()
+        reports.print_schedule_pdf(printer,document)
+        self.assertGreater(os.path.getsize(pdf_path),1000)
+        grid=next(
+            frame for frame in document.rootFrame().childFrames()
+            if isinstance(frame,QTextTable) and frame.columns()==len(db.DAYS)+1
+        )
+        self.assertGreaterEqual(
+            document.documentLayout().frameBoundingRect(grid).width(),
+            printer.pageRect(QPrinter.Point).width()*0.95,
+        )
+        column_widths=[width.value(100) for width in grid.format().columnWidthConstraints()]
+        self.assertAlmostEqual(column_widths[0],12)
+        self.assertTrue(all(abs(width-column_widths[1])<0.01 for width in column_widths[1:]))
         # Capture each actual UI for visual inspection.
         for key in win.pages:
             win.go(key); app.processEvents(); win.grab().save(os.path.join(tempfile.gettempdir(),'classflow-'+key+'.png'))

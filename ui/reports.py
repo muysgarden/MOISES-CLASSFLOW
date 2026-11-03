@@ -2,7 +2,7 @@ import html
 import re
 from pathlib import Path
 from PyQt5.QtCore import QStandardPaths, QRectF
-from PyQt5.QtGui import QPainter, QTextDocument
+from PyQt5.QtGui import QPainter, QTextDocument, QTextLength, QTextTable
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QFileDialog
 from openpyxl import Workbook
@@ -307,16 +307,20 @@ class ReportsPage(Page):
             return "<hr>".join(blocks)
 
         head = (
-            '<h2 align="center">CLASS SCHEDULE</h2>'
-            f'<p align="center">{esc(self.win.term_name())}</p>'
-            '<table width="100%" cellspacing="0" cellpadding="4"><tr>'
-            + "".join(f"<td>{item}</td>" for item in meta)
-            + "</tr></table>"
+            '<table width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse; margin-bottom:8px;">'
+            '<tr><td style="background-color:#17365D; color:#FFFFFF; font-size:18pt; font-weight:bold; text-align:center; padding:8px 0;">CLASS SCHEDULE</td></tr>'
+            f'<tr><td style="text-align:center; font-size:11pt; color:#17365D; padding:4px 0;">{esc(self.win.term_name())}</td></tr>'
+            '<tr>'
+            + "".join(
+                f'<td style="border:1px solid #D0D7E2; background-color:#F4F8FC; padding:6px 8px; font-size:10pt;">{item}</td>'
+                for item in meta
+            )
+            + '</tr></table>'
         )
         table = (
-            '<table width="100%" border="1" cellspacing="0" cellpadding="2">'
-            '<tr bgcolor="#e9edf3"><th width="12%">PERIOD</th>'
-            + "".join(f"<th>{esc(name.upper())}</th>" for _, name in db.DAYS)
+            '<table width="100%" border="1" cellspacing="0" cellpadding="2" style="border-collapse:collapse; table-layout:fixed;">'
+            '<tr style="background-color:#D9EAF7;"><th width="12%" nowrap="nowrap" style="padding:6px; text-align:center;">PERIOD</th>'
+            + "".join(f'<th nowrap="nowrap" style="padding:6px; text-align:center;">{esc(name.upper())}</th>' for _, name in db.DAYS)
             + "</tr>"
         )
         active_until = {day: 0 for day in logic.DAY_CODES}
@@ -324,7 +328,7 @@ class ReportsPage(Page):
             minute = logic.CAL_START + slot * slot_minutes
             next_minute = minute + slot_minutes
             cells = [
-                f'<td height="18" align="center">{esc(logic.fmt(minute))}–{esc(logic.fmt(next_minute))}</td>'
+                f'<td height="18" align="center" nowrap="nowrap">{esc(logic.fmt(minute))}–{esc(logic.fmt(next_minute))}</td>'
             ]
             for day, _ in db.DAYS:
                 component = day_cells[day].get(slot)
@@ -388,10 +392,14 @@ class ReportsPage(Page):
 
             sections = ', '.join(sorted({row['section'] for row in room_rows})) or 'None'
             kind = 'Laboratory' if room['room_type'] == 'Laboratory' else 'Lecture room'
+            day_width = 90 / len(db.DAYS)
             table = (
                 '<table width="100%" border="1" cellspacing="0" cellpadding="2">'
-                '<tr bgcolor="#e9edf3"><th width="12%">TIME</th>'
-                + ''.join(f'<th>{esc(name.upper())}</th>' for _, name in db.DAYS)
+                '<tr bgcolor="#e9edf3"><th width="10%">TIME</th>'
+                + ''.join(
+                    f'<th width="{day_width:.2f}%" nowrap="nowrap">{esc(name.upper())}</th>'
+                    for _, name in db.DAYS
+                )
                 + '</tr>'
             )
             active_until = {day: 0 for day in logic.DAY_CODES}
@@ -402,7 +410,7 @@ class ReportsPage(Page):
             for slot in range(slot_count):
                 start = logic.CAL_START + slot * slot_minutes
                 finish = start + slot_minutes
-                cells = [f'<td height="18" align="center">{esc(logic.fmt(start))}–{esc(logic.fmt(finish))}</td>']
+                cells = [f'<td height="18" align="center" nowrap="nowrap">{esc(logic.fmt(start))}–{esc(logic.fmt(finish))}</td>']
                 for day in logic.DAY_CODES:
                     component = components[day].get(slot)
                     if component:
@@ -483,8 +491,24 @@ class ReportsPage(Page):
         printer.setPageMargins(8, 8, 8, 8, QPrinter.Millimeter)
         page = printer.pageRect(QPrinter.Point)
         document.setTextWidth(page.width())
+        frames = [document.rootFrame()]
+        while frames:
+            frame = frames.pop()
+            for child in frame.childFrames():
+                if isinstance(child, QTextTable) and child.columns() == len(db.DAYS) + 1:
+                    table_format = child.format()
+                    table_format.setWidth(QTextLength(QTextLength.PercentageLength, 100))
+                    table_format.setColumnWidthConstraints(
+                        [QTextLength(QTextLength.PercentageLength, 12)]
+                        + [
+                            QTextLength(QTextLength.PercentageLength, 88 / len(db.DAYS))
+                            for _ in db.DAYS
+                        ]
+                    )
+                    child.setFormat(table_format)
+                frames.append(child)
         size = document.documentLayout().documentSize()
-        scale = min(1.0, page.width() / size.width(), page.height() / size.height())
+        scale = min(1.0, page.height() / size.height())
 
         painter = QPainter(printer)
         painter.setWindow(0, 0, round(page.width()), round(page.height()))
