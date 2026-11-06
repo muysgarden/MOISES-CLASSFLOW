@@ -4,7 +4,7 @@ import math
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QAbstractItemView, QCheckBox, QCompleter, QFrame, QGridLayout, QHBoxLayout,
-    QLabel, QLineEdit, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget,
+    QLabel, QLineEdit, QMessageBox, QPushButton, QSizePolicy, QTabWidget, QVBoxLayout, QWidget,
 )
 
 import db
@@ -164,10 +164,12 @@ class SchedulesPage(Page):
             "Saved Schedules", "Filter by section or search records",
             right=[self.list_section, self.search],
         )
+        listing.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         listing_layout.addWidget(listing)
+        listing_layout.addStretch()
         self.table = make_table(
             ["Course", "Section", "Subject", "Faculty", "Room", "Days & Time", "Actions"],
-            row_h=44, fixed={0: 78, 6: 158},
+            row_h=54, fixed={0: 78, 6: 158},
             flex={1: 2, 2: 2, 3: 2, 4: 2, 5: 3},
         )
         self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -405,7 +407,7 @@ class SchedulesPage(Page):
             actions.addWidget(button("Edit", "linkbtn", lambda _=False, g=group: self.edit(g)))
             actions.addWidget(button("Delete", "danger", lambda _=False, g=group: self.delete(g)))
             widget_cell(self.table, index, 6, action_host)
-        height = self.table.horizontalHeader().height() + len(groups) * 44 + 3
+        height = self.table.horizontalHeader().height() + len(groups) * 54 + 3
         self.table.setFixedHeight(max(100, height))
         count = sum(
             query in " ".join(str(value) for value in group.values()).casefold()
