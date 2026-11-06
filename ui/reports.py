@@ -132,9 +132,107 @@ class ReportsPage(Page):
         set_kind(self.banner,'bad' if validation['critical'] else 'good')
         self.summary.setText(f'Total subjects: {len({r["subject_id"] for r in self.report_rows})}\n\nWeekly class hours: {sum((r["end_min"]-r["start_min"])/60 for r in self.report_rows):g}\n\nRooms assigned: {len({r["room_id"] for r in self.report_rows})}\n\nAverage room utilization:\n{sum(v for _,v in utilization)/6:.1f}%')
 
+    def _timetable_html(self):
+        """Print-friendly 30-minute weekly grid based on the CCS class-schedule sheet.
+
+        The exported grid intentionally differs from the dashboard preview: official
+        paper documents need a clear heading, schedule metadata and signature area.
+        """
+        import re
+        esc=lambda value: html.escape(str(value))
+        term=self.win.term_name()
+        mode=self.report.currentText()
+        sections=sorted({r['section'] for r in self.report_rows})
+        section_text=self.section.currentText() if self.section.currentData() is not None else ', '.join(sections)
+        if not section_text:
+            section_text='All sections'
+        program_row=None
+        if self.section.currentData() is not None:
+            program_row=db.row(
+                'SELECT p.name, p.code FROM sections s JOIN programs p ON p.id=s.program_id WHERE s.id=?',
+                (self.section.currentData(),))
+        elif self.program.currentData() is not None:
+            program_row=db.row('SELECT name, code FROM programs WHERE id=?',(self.program.currentData(),))
+        program_name=program_row['name'] if program_row else 'All programs'
+        year_match=re.search(r'\\b([1-4])(?:st|nd|rd|th)?\\b',section_text,flags=re.IGNORECASE)
+        year=f"{year_match.group(1)}{'st' if year_match.group(1)=='1' else 'nd' if year_match.group(1)=='2' else 'rd' if year_match.group(1)=='3' else 'th'} Year" if year_match else '—'
+        detail=(
+            f'<b>Program:</b> {esc(program_name)} &nbsp;&nbsp; '
+            f'<b>Year:</b> {esc(year)} &nbsp;&nbsp; '
+            f'<b>Section:</b> {esc(section_text)}'
+        )
+        if mode=='Faculty Schedules':
+            detail=f'<b>Faculty:</b> {esc(self.faculty.currentText())}'
+        elif mode=='Classroom Schedules':
+            detail=f'<b>Classroom:</b> {esc(self.room.currentText())}'
+        # The source timetable runs 7 AM–5 PM; extend later when saved classes require it.
+        beginning=7*60
+        latest=max([17*60]+[r['end_min'] for r in self.report_rows])
+        finish=min(20*60,((latest+29)//30)*30)
+        colors={'major':'#edf2fb','ged':'#e8f6f7','lab':'#fff3df'}
+        day_names=[('Mon','MONDAY'),('Tue','TUESDAY'),('Wed','WEDNESDAY'),
+                   ('Thu','THURSDAY'),('Fri','FRIDAY'),('Sat','SATURDAY')]
+        body=[]
+        for t in range(beginning,finish,30):
+            cells=[f'<td class="period">{esc(logic.fmt(t))}–{esc(logic.fmt(t+30))}</td>']
+            for day,_ in day_names:
+                active=[r for r in self.report_rows if r['day']==day and
+                        r['start_min']<t+30 and r['end_min']>t]
+                if not active:
+                    cells.append('<td></td>')
+                    continue
+                entries=[]
+                for r in active:
+                    starts_here=r['start_min']>=t or (t==beginning and r['start_min']<beginning)
+                    if starts_here:
+                        label=(f'<b>{esc(r["code"])}</b><br/>'
+                               f'{esc(r["faculty"])}<br/>'
+                               f'{esc(r["room"])}<br/>'
+                               f'({esc(r["subject_type"])})')
+                        entries.append(label)
+                color=colors.get(active[0]['category'],'#edf2fb')
+                cells.append(f'<td style="background-color:{color};text-align:center;">'
+                             +'<hr/>'.join(entries)+'</td>')
+            body.append('<tr>'+''.join(cells)+'</tr>')
+        css=(
+            'body{font-family:Arial,sans-serif;color:#171c29;font-size:8pt;}'
+            '.center{text-align:center;}'
+            '.school{font-size:10pt;font-weight:bold;}'
+            '.college{font-size:10pt;font-weight:bold;margin-top:6px;}'
+            '.heading{font-size:14pt;font-weight:bold;margin-top:8px;}'
+            '.meta{margin:12px 0 7px 0;font-size:9pt;}'
+            'table{border-collapse:collapse;width:100%;table-layout:fixed;}'
+            'th,td{border:1px solid #778195;padding:3px;vertical-align:middle;}'
+            'th{background-color:#e7edf7;font-size:8pt;}'
+            'td{font-size:7pt;height:19px;}'
+            '.period{white-space:nowrap;text-align:center;width:18%;background:#f5f7fa;}'
+            '.signature{margin-top:18px;font-size:9pt;}'
+        )
+        return (
+            '<html><head><style>'+css+'</style></head><body>'
+            '<div class="center">Republic of the Philippines<br/>'
+            '<span class="school">Laguna State Polytechnic University</span><br/>'
+            'Province of Laguna<br/>'
+            '<div class="college">COLLEGE OF COMPUTER STUDIES</div>'
+            '<div class="heading">CLASS SCHEDULE</div>'
+            f'<div>{esc(term)}</div></div>'
+            f'<div class="meta">{detail}</div>'
+            '<table><thead><tr><th>PERIOD</th>'
+            +''.join(f'<th>{name}</th>' for _,name in day_names)
+            +'</tr></thead><tbody>'+''.join(body)+'</tbody></table>'
+            '<div class="signature">Prepared by:'
+            '<br/><br/>________________________________<br/>Name / Signature / Designation'
+            '</div></body></html>'
+        )
+
     def document(self):
+        doc=QTextDocument()
+        if self.report.currentText() in REPORTS[:4]:
+            doc.setHtml(self._timetable_html())
+            return doc
         esc=lambda x:html.escape(str(x))
-        doc=QTextDocument(); doc.setHtml('<h1>ClassFlow</h1><h2>'+esc(self.report.currentText())+'</h2><p>'+esc(self.win.term_name())+'</p><p>'+esc(self.banner.title.text())+'</p><table border="1" cellspacing="0" cellpadding="6"><tr>'+''.join('<th>'+esc(h)+'</th>' for h in self.headers)+'</tr>'+''.join('<tr>'+''.join('<td>'+esc(v)+'</td>' for v in row)+'</tr>' for row in self.output)+'</table>'); return doc
+        doc.setHtml('<h1>ClassFlow</h1><h2>'+esc(self.report.currentText())+'</h2><p>'+esc(self.win.term_name())+'</p><p>'+esc(self.banner.title.text())+'</p><table border="1" cellspacing="0" cellpadding="6"><tr>'+''.join('<th>'+esc(h)+'</th>' for h in self.headers)+'</tr>'+''.join('<tr>'+''.join('<td>'+esc(v)+'</td>' for v in row)+'</tr>' for row in self.output)+'</table>')
+        return doc
 
     def export_pdf(self):
         path,_=QFileDialog.getSaveFileName(self,'Export PDF','ClassFlow-report.pdf','PDF (*.pdf)')
