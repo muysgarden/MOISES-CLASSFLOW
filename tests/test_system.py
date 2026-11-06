@@ -179,12 +179,16 @@ class SystemTests(unittest.TestCase):
         page.save_unavailability()
         block = db.row('SELECT * FROM unavailable ORDER BY id DESC LIMIT 1')
         self.assertEqual(block['resource_id'], faculty['id'])
+        self.assertEqual(page.blocks.columnCount(), 5)
+        self.assertEqual(page.blocks.rowCount(), 1)
+        self.assertEqual(page.blocks.item(0, 3).text(), 'Faculty meeting')
         self.assertEqual((block['start_min'], block['end_min']), (495, 585))
         self.assertEqual(block['reason'], 'Faculty meeting')
         self.assertTrue(unavailable('faculty', faculty['id'], 'Sat', 8 * 60 + 15, 9 * 60))
         with patch('ui.availability.QMessageBox.question', return_value=QMessageBox.Yes):
             page.remove_unavailability(block['id'])
         self.assertFalse(unavailable('faculty', faculty['id'], 'Sat', 8 * 60, 9 * 60))
+        self.assertEqual(page.blocks.rowCount(), 0)
         self.assertEqual(parse_time('1:45 PM'), 13 * 60 + 45)
         self.assertEqual(parse_time('13:45'), 13 * 60 + 45)
         with self.assertRaises(ValueError):

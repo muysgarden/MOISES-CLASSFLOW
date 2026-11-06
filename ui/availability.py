@@ -3,8 +3,9 @@
 from datetime import datetime
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QCompleter, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget,
+    QAbstractItemView, QCompleter, QFrame, QGridLayout, QHeaderView,
+    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
+    QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
 )
 
 import db
@@ -84,6 +85,12 @@ class AvailabilityPage(Page):
             #availabilityPage QPushButton#availRemove {
                 background: #FFF0F0; color: #AC4242; border: none; border-radius: 7px;
                 padding: 6px 12px; }
+            #availabilityPage QTableWidget#blockedRecords {
+                background: white; color: #344761; border: 1px solid #E4EAF3;
+                border-radius: 9px; gridline-color: #EDF1F8; font-size: 12px; }
+            #availabilityPage QTableWidget#blockedRecords QHeaderView::section {
+                background: #F3F6FC; color: #52627A; border: none;
+                padding: 9px 8px; font-weight: 700; }
             #availabilityPage QTabWidget::pane { border: none; }
             #availabilityPage QTabBar::tab { background: white; color: #52627A;
                 min-width: 150px; padding: 12px 20px; margin-right: 8px;
@@ -237,9 +244,31 @@ class AvailabilityPage(Page):
         v.addLayout(reason_row)
         save = button("Mark unavailable", "primary", self.save_unavailability)
         v.addWidget(save, 0, Qt.AlignRight)
-        v.addWidget(self._label("Saved unavailable windows", "availHeading"))
-        self.blocks = QVBoxLayout()
-        v.addLayout(self.blocks)
+        v.addWidget(self._label("Blocked Time Records", "availHeading"))
+        self.blocks = QTableWidget(0, 5)
+        self.blocks.setObjectName("blockedRecords")
+        self.blocks.setHorizontalHeaderLabels(
+            ["FACULTY / ROOM", "DAY", "TIME", "REASON", "ACTION"]
+        )
+        self.blocks.verticalHeader().hide()
+        self.blocks.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.blocks.setSelectionMode(QAbstractItemView.NoSelection)
+        self.blocks.setFocusPolicy(Qt.NoFocus)
+        self.blocks.setAlternatingRowColors(True)
+        self.blocks.verticalHeader().setDefaultSectionSize(45)
+        header = self.blocks.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.Fixed)
+        header.setSectionResizeMode(2, QHeaderView.Fixed)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.Fixed)
+        self.blocks.setColumnWidth(1, 100)
+        self.blocks.setColumnWidth(2, 190)
+        self.blocks.setColumnWidth(4, 118)
+        self.blocks.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        v.addWidget(self.blocks)
+        self.block_empty = self._label("No blocked time records yet.")
+        v.addWidget(self.block_empty)
         self.editor.hide()
         self.lay.addWidget(self.editor)
 
@@ -270,27 +299,31 @@ class AvailabilityPage(Page):
             self.resource.lineEdit().setPlaceholderText("Type to find faculty or room…")
 
     def _reload_blocks(self):
-        clear_layout(self.blocks)
         items = db.rows("SELECT * FROM unavailable ORDER BY day,start_min,id")
-        if not items:
-            self.blocks.addWidget(self._label("No unavailable windows recorded yet."))
-        for item in items:
+        self.blocks.setRowCount(len(items))
+        self.blocks.setVisible(bool(items))
+        self.block_empty.setVisible(not items)
+        self.blocks.setFixedHeight(min(len(items), 6) * 45 + 37)
+        for index, item in enumerate(items):
             table = "faculty" if item["kind"] == "faculty" else "classrooms"
             resource = db.row(f"SELECT name FROM {table} WHERE id=?", (item["resource_id"],))
             name = resource["name"] if resource else "Removed record"
+            name = ("Faculty · " if item["kind"] == "faculty" else "Room · ") + name
             day = dict(db.DAYS).get(item["day"], item["day"])
-            row = QHBoxLayout()
-            row.addWidget(self._label(
-                f"{name}  ·  {day}  ·  {logic.fmt(item['start_min'])}–{logic.fmt(item['end_min'])}"
-                + (f"  ·  {item['reason']}" if item['reason'] else ""),
-                "availInfo",
-            ))
-            row.addStretch()
+            values = [
+                name, day,
+                f"{logic.fmt(item['start_min'])} – {logic.fmt(item['end_min'])}",
+                item["reason"] or "—",
+            ]
+            for col, value in enumerate(values):
+                cell = QTableWidgetItem(value)
+                cell.setToolTip(value)
+                cell.setFlags(Qt.ItemIsEnabled)
+                self.blocks.setItem(index, col, cell)
             remove = QPushButton("Remove")
             remove.setObjectName("availRemove")
             remove.clicked.connect(lambda _=False, rid=item["id"]: self.remove_unavailability(rid))
-            row.addWidget(remove)
-            self.blocks.addLayout(row)
+            self.blocks.setCellWidget(index, 4, remove)
 
     def save_unavailability(self):
         typed = self.resource.currentText().strip()
@@ -398,7 +431,7 @@ class AvailabilityPage(Page):
             self.room_type.addItem(room_type, room_type)
         self.room_type.setCurrentIndex(max(0, self.room_type.findData(chosen)))
         self.room_type.blockSignals(False)
-        if self.editor.isVisible():
+        if not self.editor.isHidden():
             self._reload_resources()
             self._reload_blocks()
         for grid in self.grids:

@@ -70,6 +70,8 @@ Select a day and time range to see **Available**, **Scheduled**, **Unavailable**
 
 Click **Manage Availability** beside the Module 2 heading to reveal an inline form immediately below the availability filters. Find a faculty member or classroom by typing, set a specific day and time interval, review existing blocked windows, or remove an individual window after confirmation. Click the header button again to hide the form. Scheduled classes and manually blocked intervals both affect availability. If a demo resource has administrator-created blocked windows, demo cleanup pauses until those windows are reviewed and removed; it never silently deletes them.
 
+Blocked periods are listed in a readable **Blocked Time Records** table with Faculty/Room, Day, Time, Reason and Remove columns. Records can be removed individually with confirmation; the table scrolls when there are many entries.
+
 In the blocked-time editor, **From** and **Until** offer 15-minute dropdown suggestions but also accept an exact typed time such as `8:17 AM` or `1:45 PM`. Invalid times, reversed ranges, and overlapping blocked windows are rejected. An optional **Reason** (for example, Faculty meeting or Room maintenance) is saved with the unavailable period and displayed alongside it; existing databases are upgraded without losing their earlier blocked times.
 
 ## Modules
