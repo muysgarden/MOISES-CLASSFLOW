@@ -154,7 +154,7 @@ class ReportsPage(Page):
         elif self.program.currentData() is not None:
             program_row=db.row('SELECT name, code FROM programs WHERE id=?',(self.program.currentData(),))
         program_name=program_row['name'] if program_row else 'All programs'
-        year_match=re.search(r'\\b([1-4])(?:st|nd|rd|th)?\\b',section_text,flags=re.IGNORECASE)
+        year_match=re.search(r'\b([1-4])(?:st|nd|rd|th)?\b',section_text,flags=re.IGNORECASE)
         year=f"{year_match.group(1)}{'st' if year_match.group(1)=='1' else 'nd' if year_match.group(1)=='2' else 'rd' if year_match.group(1)=='3' else 'th'} Year" if year_match else '—'
         detail=(
             f'<b>Program:</b> {esc(program_name)} &nbsp;&nbsp; '
