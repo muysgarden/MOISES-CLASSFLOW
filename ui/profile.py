@@ -42,7 +42,7 @@ class AccountSettingsPage(QWidget):
             QLabel#settingsAvatar {{ background: #E8EEFF; color: #2955CE; border-radius: 26px;
                 font-size: 22px; font-weight: 750; }}
             QPushButton#settingsTab {{ text-align: left; background: transparent; color: #52627A;
-                border: none; border-radius: 9px; padding: 13px 15px; font-size: 13px; }}
+                border: none; border-radius: 9px; padding: 13px 10px; font-size: 13px; }}
             QPushButton#settingsTab:hover {{ background: #F1F5FC; }}
             QPushButton#settingsTab:checked {{ background: #EBE8FA; color: #423092; font-weight: 700; }}
             QLineEdit {{ background: white; border: 1px solid #DCE4EE; border-radius: 8px;
@@ -82,14 +82,14 @@ class AccountSettingsPage(QWidget):
         shell.setSpacing(0)
         menu = QFrame()
         menu.setObjectName("settingsMenu")
-        menu.setFixedWidth(232)
+        menu.setFixedWidth(240)
         ml = QVBoxLayout(menu)
         ml.setContentsMargins(14, 24, 14, 20)
         ml.setSpacing(8)
         self.tabs = {}
-        for key, title in (("account", "◉   My account"),
-                           ("security", "◇   Security"),
-                           ("data", "▤   Data management")):
+        for key, title in (("account", "My account"),
+                           ("security", "Security"),
+                           ("data", "Data management")):
             button = QPushButton(title)
             button.setObjectName("settingsTab")
             button.setCheckable(True)
