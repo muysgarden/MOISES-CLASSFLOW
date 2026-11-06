@@ -98,7 +98,7 @@ class ValidationPage(Page):
         self.lay.addWidget(self.results)
         self.table = make_table(
             ["Priority", "Problem", "Affected Class", "What happened"],
-            row_h=60, fixed={0: 90}, flex={1: 2, 2: 2, 3: 5},
+            row_h=60, fixed={0: 90}, flex={1: 3, 2: 3, 3: 4},
         )
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
