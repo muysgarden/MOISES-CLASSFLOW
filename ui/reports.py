@@ -15,21 +15,23 @@ class ReportsPage(Page):
         super().__init__(win)
         self.add_header('MODULE 05','Reports & Timetables','Choose a report, review the saved records, and export what you need.',[
             button('Print',slot=self.print_report),button('Export PDF',slot=self.export_pdf),button('Export CSV','primary',self.export_csv)])
-        card=Card('Report Type','Choose what you want to view'); self.lay.addWidget(card)
+        # One compact filter bar keeps the timetable near the top of the page.
+        card=Card(); self.lay.addWidget(card)
         self.report=Combo(); self.report.addItems(REPORTS); self.report.setCurrentIndex(2)
         self.program=Combo(); self.section=Combo(); self.faculty=Combo(); self.room=Combo()
-        report_row=QHBoxLayout(); report_row.addWidget(labeled('Select report',self.report),1)
-        report_row.addStretch(2)
-        card.body(margins=(18,12,18,16)).addLayout(report_row)
-        self.filter_card=Card('Refine results','Only filters relevant to the chosen report appear here')
-        self.lay.addWidget(self.filter_card)
-        filter_row=QHBoxLayout()
+        report_row=QHBoxLayout(); report_row.setSpacing(14)
+        report_row.addWidget(labeled('Report Type',self.report),1)
+        self.filter_card=QWidget()
+        filter_row=QHBoxLayout(self.filter_card)
+        filter_row.setContentsMargins(0,0,0,0)
+        filter_row.setSpacing(14)
         self.filter_widgets={}
-        for key,title,w in [('program','Course / Program',self.program),('section','Section',self.section),('faculty','Faculty',self.faculty),('room','Classroom',self.room)]:
+        for key,title,w in [('program','Program',self.program),('section','Section',self.section),('faculty','Faculty',self.faculty),('room','Classroom',self.room)]:
             host=labeled(title,w)
             filter_row.addWidget(host,1)
             self.filter_widgets[key]=host
-        self.filter_card.body(margins=(18,12,18,16)).addLayout(filter_row)
+        report_row.addWidget(self.filter_card,2)
+        card.body(margins=(18,12,18,12)).addLayout(report_row)
         self.report.currentIndexChanged.connect(self.render); self.program.currentIndexChanged.connect(self.populate_sections)
         for w in [self.section,self.faculty,self.room]: w.currentIndexChanged.connect(self.render)
         self.main_card=Card('Report Preview','Selected academic term'); self.lay.addWidget(self.main_card)
