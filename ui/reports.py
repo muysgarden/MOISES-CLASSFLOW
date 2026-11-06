@@ -132,106 +132,190 @@ class ReportsPage(Page):
         set_kind(self.banner,'bad' if validation['critical'] else 'good')
         self.summary.setText(f'Total subjects: {len({r["subject_id"] for r in self.report_rows})}\n\nWeekly class hours: {sum((r["end_min"]-r["start_min"])/60 for r in self.report_rows):g}\n\nRooms assigned: {len({r["room_id"] for r in self.report_rows})}\n\nAverage room utilization:\n{sum(v for _,v in utilization)/6:.1f}%')
 
-    def _timetable_html(self):
-        """Print-friendly 30-minute weekly grid based on the CCS class-schedule sheet.
-
-        The exported grid intentionally differs from the dashboard preview: official
-        paper documents need a clear heading, schedule metadata and signature area.
-        """
-        import re
-        esc=lambda value: html.escape(str(value))
-        term=self.win.term_name()
-        mode=self.report.currentText()
-        sections=sorted({r['section'] for r in self.report_rows})
-        section_text=self.section.currentText() if self.section.currentData() is not None else ', '.join(sections)
-        if not section_text:
-            section_text='All sections'
-        program_row=None
-        if self.section.currentData() is not None:
-            program_row=db.row(
-                'SELECT p.name, p.code FROM sections s JOIN programs p ON p.id=s.program_id WHERE s.id=?',
-                (self.section.currentData(),))
-        elif self.program.currentData() is not None:
-            program_row=db.row('SELECT name, code FROM programs WHERE id=?',(self.program.currentData(),))
-        program_name=program_row['name'] if program_row else 'All programs'
-        year_match=re.search(r'\b([1-4])(?:st|nd|rd|th)?\b',section_text,flags=re.IGNORECASE)
-        year=f"{year_match.group(1)}{'st' if year_match.group(1)=='1' else 'nd' if year_match.group(1)=='2' else 'rd' if year_match.group(1)=='3' else 'th'} Year" if year_match else '—'
-        detail=(
-            f'<b>Program:</b> {esc(program_name)} &nbsp;&nbsp; '
-            f'<b>Year:</b> {esc(year)} &nbsp;&nbsp; '
-            f'<b>Section:</b> {esc(section_text)}'
-        )
-        if mode=='Faculty Schedules':
-            detail=f'<b>Faculty:</b> {esc(self.faculty.currentText())}'
-        elif mode=='Classroom Schedules':
-            detail=f'<b>Classroom:</b> {esc(self.room.currentText())}'
-        # The source timetable runs 7 AM–5 PM; extend later when saved classes require it.
-        beginning=7*60
-        latest=max([17*60]+[r['end_min'] for r in self.report_rows])
-        finish=min(20*60,((latest+29)//30)*30)
-        colors={'major':'#edf2fb','ged':'#e8f6f7','lab':'#fff3df'}
-        day_names=[('Mon','MONDAY'),('Tue','TUESDAY'),('Wed','WEDNESDAY'),
-                   ('Thu','THURSDAY'),('Fri','FRIDAY'),('Sat','SATURDAY')]
-        body=[]
-        for t in range(beginning,finish,30):
-            cells=[f'<td class="period">{esc(logic.fmt(t))}–{esc(logic.fmt(t+30))}</td>']
-            for day,_ in day_names:
-                active=[r for r in self.report_rows if r['day']==day and
-                        r['start_min']<t+30 and r['end_min']>t]
-                if not active:
-                    cells.append('<td></td>')
-                    continue
-                entries=[]
-                for r in active:
-                    starts_here=r['start_min']>=t or (t==beginning and r['start_min']<beginning)
-                    if starts_here:
-                        label=(f'<b>{esc(r["code"])}</b><br/>'
-                               f'{esc(r["faculty"])}<br/>'
-                               f'{esc(r["room"])}<br/>'
-                               f'({esc(r["subject_type"])})')
-                        entries.append(label)
-                color=colors.get(active[0]['category'],'#edf2fb')
-                cells.append(f'<td style="background-color:{color};text-align:center;">'
-                             +'<hr/>'.join(entries)+'</td>')
-            body.append('<tr>'+''.join(cells)+'</tr>')
-        css=(
-            'body{font-family:Arial,sans-serif;color:#171c29;font-size:8pt;}'
-            '.center{text-align:center;}'
-            '.school{font-size:10pt;font-weight:bold;}'
-            '.college{font-size:10pt;font-weight:bold;margin-top:6px;}'
-            '.heading{font-size:14pt;font-weight:bold;margin-top:8px;}'
-            '.meta{margin:12px 0 7px 0;font-size:9pt;}'
-            'table{border-collapse:collapse;width:100%;table-layout:fixed;}'
-            'th,td{border:1px solid #778195;padding:3px;vertical-align:middle;}'
-            'th{background-color:#e7edf7;font-size:8pt;}'
-            'td{font-size:7pt;height:19px;}'
-            '.period{white-space:nowrap;text-align:center;width:18%;background:#f5f7fa;}'
-            '.signature{margin-top:18px;font-size:9pt;}'
-        )
+    def _print_styles(self):
+        # Simple tables print more reliably through QTextDocument than screen-only cards.
         return (
-            '<html><head><style>'+css+'</style></head><body>'
+            'body{font-family:Arial,sans-serif;color:#202633;font-size:8pt;}'
+            '.center{text-align:center;}'
+            '.university{font-size:11pt;font-weight:bold;}'
+            '.college{font-size:10pt;font-weight:bold;margin-top:8px;}'
+            '.heading{font-size:13pt;font-weight:bold;margin-top:7px;}'
+            '.meta{margin:13px 0 8px 0;font-size:9pt;}'
+            '.report-name{margin:14px 0 6px 0;font-size:10pt;font-weight:bold;}'
+            'table{border-collapse:collapse;width:100%;}'
+            'th,td{border:1px solid #788292;padding:4px;vertical-align:middle;}'
+            'th{background-color:#e7ecf4;font-size:8pt;text-align:center;}'
+            'td{font-size:7pt;}'
+            '.period{text-align:center;width:18%;background-color:#f5f7fa;white-space:nowrap;}'
+            '.signature{margin-top:20px;font-size:9pt;}'
+            '.notice{font-size:8pt;color:#586174;}'
+        )
+
+    def _official_heading(self, title):
+        esc=lambda value: html.escape(str(value))
+        return (
             '<div class="center">Republic of the Philippines<br/>'
-            '<span class="school">Laguna State Polytechnic University</span><br/>'
+            '<span class="university">Laguna State Polytechnic University</span><br/>'
             'Province of Laguna<br/>'
             '<div class="college">COLLEGE OF COMPUTER STUDIES</div>'
-            '<div class="heading">CLASS SCHEDULE</div>'
-            f'<div>{esc(term)}</div></div>'
-            f'<div class="meta">{detail}</div>'
-            '<table><thead><tr><th>PERIOD</th>'
-            +''.join(f'<th>{name}</th>' for _,name in day_names)
-            +'</tr></thead><tbody>'+''.join(body)+'</tbody></table>'
-            '<div class="signature">Prepared by:'
-            '<br/><br/>________________________________<br/>Name / Signature / Designation'
-            '</div></body></html>'
+            f'<div class="heading">{esc(title)}</div>'
+            f'<div>{esc(self.win.term_name())}</div></div>'
+        )
+
+    def _print_footer(self):
+        # Signatory names must be supplied/approved, not copied from the reference.
+        return ('<div class="signature">Prepared by:<br/><br/>'
+                '________________________________<br/>Name / Signature / Designation</div>')
+
+    def _schedule_groups(self):
+        """Separate distinct timetable subjects so 'All' doesn't mix sections."""
+        mode=self.report.currentText()
+        if mode in ('Class Schedules','Section Schedules'):
+            key='section_id'
+            name='section'
+        elif mode=='Faculty Schedules':
+            key='faculty_id'
+            name='faculty'
+        else:
+            key='room_id'
+            name='room'
+        groups={}
+        for row in self.report_rows:
+            groups.setdefault(row[key],[]).append(row)
+        return [(rows[0][name],rows) for _,rows in sorted(
+            groups.items(),key=lambda pair: pair[1][0][name].lower())]
+
+    def _group_details(self, name, rows):
+        esc=lambda value: html.escape(str(value))
+        mode=self.report.currentText()
+        if mode in ('Class Schedules','Section Schedules'):
+            # The program belongs to this particular section, not the filter that
+            # may have been hidden or left at another report's selection.
+            section=db.row('SELECT p.name, s.name AS section FROM sections s '
+                           'JOIN programs p ON p.id=s.program_id WHERE s.id=?',
+                           (rows[0]['section_id'],))
+            program=section['name'] if section else 'Program not specified'
+            import re
+            match=re.search(r'(?<![0-9])([1-4])(?:st|nd|rd|th)?(?=\s*[A-Za-z]|$)',name)
+            ordinal={'1':'1st','2':'2nd','3':'3rd','4':'4th'}
+            year=ordinal[match.group(1)]+' Year' if match else 'Not specified'
+            return (f'<b>Program:</b> {esc(program)} &nbsp;&nbsp;'
+                    f'<b>Year:</b> {esc(year)} &nbsp;&nbsp;'
+                    f'<b>Section:</b> {esc(name)}')
+        if mode=='Faculty Schedules':
+            return f'<b>Faculty:</b> {esc(name)}'
+        return f'<b>Classroom:</b> {esc(name)}'
+
+    def _timetable_html(self):
+        """Official weekly sheet: one distinct schedule per section/faculty/room."""
+        esc=lambda value: html.escape(str(value))
+        days=[('Mon','MONDAY'),('Tue','TUESDAY'),('Wed','WEDNESDAY'),
+              ('Thu','THURSDAY'),('Fri','FRIDAY'),('Sat','SATURDAY')]
+        colors={'major':'#edf2fb','ged':'#e8f6f7','lab':'#fff3df'}
+        start=7*60
+        groups=self._schedule_groups()
+        if not groups:
+            groups=[('No matching schedule',[])]
+        pages=[]
+        for group_name,rows in groups:
+            end_of_day=max([17*60]+[r['end_min'] for r in rows])
+            stop=min(20*60,((end_of_day+29)//30)*30)
+            # A real class occupies its entire time interval. Build individual
+            # day columns with rowspans to avoid repeating the class at every
+            # 30-minute marker.
+            by_day={}
+            for day,_ in days:
+                meetings=sorted((r for r in rows if r['day']==day),
+                                key=lambda r:(r['start_min'],r['end_min']))
+                starts={}
+                occupied=set()
+                for meeting in meetings:
+                    first=max(start,(meeting['start_min']//30)*30)
+                    last=min(stop,((meeting['end_min']+29)//30)*30)
+                    if last<=first:
+                        continue
+                    # In unusual conflicting schedules, preserve all meeting
+                    # labels rather than silently dropping a second meeting.
+                    if first in occupied:
+                        starts.setdefault(first,[]).append(meeting)
+                        continue
+                    slots=list(range(first,last,30))
+                    if any(t in occupied for t in slots):
+                        # Overlaps cannot be expressed as independent merged
+                        # cells in the same column; attach a warning to the
+                        # initial occupied block instead of hiding the meeting.
+                        anchor=next((k for k,v in starts.items() if k<=first and
+                                     k+v[0][1]*30>first),first)
+                        if anchor in starts:
+                            starts[anchor][2].append(meeting)
+                        continue
+                    starts[first]=[meeting,len(slots),[meeting]]
+                    occupied.update(slots)
+                by_day[day]=(starts,occupied)
+            cells=[]
+            for t in range(start,stop,30):
+                cols=[f'<td class="period">{esc(logic.fmt(t))}–{esc(logic.fmt(t+30))}</td>']
+                for day,_ in days:
+                    starts,occupied=by_day[day]
+                    if t in starts:
+                        meeting,count,conflicts=starts[t]
+                        blocks=[]
+                        for r in conflicts:
+                            blocks.append(
+                                f'<b>{esc(r["code"])}</b><br/>'
+                                f'{esc(r["faculty"])}<br/>'
+                                f'{esc(r["room"])}<br/>'
+                                f'({esc(r["subject_type"])})'
+                            )
+                        if len(blocks)>1:
+                            blocks.insert(0,'<b>OVERLAPPING CLASSES</b>')
+                        color=colors.get(meeting['category'],'#edf2fb')
+                        cols.append(
+                            f'<td rowspan="{count}" style="background-color:{color};'
+                            'text-align:center;">'+'<br/>'.join(blocks)+'</td>'
+                        )
+                    elif t not in occupied:
+                        cols.append('<td></td>')
+                cells.append('<tr>'+''.join(cols)+'</tr>')
+            table=(
+                '<table><thead><tr><th>PERIOD</th>'
+                +''.join(f'<th>{name}</th>' for _,name in days)
+                +'</tr></thead><tbody>'+''.join(cells)+'</tbody></table>'
+            )
+            pages.append(
+                f'<div class="meta">{self._group_details(group_name,rows)}</div>'
+                +table+self._print_footer()
+            )
+        return (
+            '<html><head><style>'+self._print_styles()+'</style></head><body>'
+            +self._official_heading('CLASS SCHEDULE')
+            +'<div style="font-size:8pt;color:#586174;">'+esc(self.report.currentText())+'</div>'
+            +'<hr/>'.join(pages)+'</body></html>'
+        )
+
+    def _table_report_html(self):
+        """Apply the same official heading and ruled-table style to non-grid reports."""
+        esc=lambda value: html.escape(str(value))
+        mode=self.report.currentText()
+        columns=''.join(f'<th>{esc(h.upper())}</th>' for h in self.headers)
+        entries=''.join(
+            '<tr>'+''.join(f'<td>{esc(value)}</td>' for value in record)+'</tr>'
+            for record in self.output
+        )
+        if not self.output:
+            entries=f'<tr><td colspan="{len(self.headers)}" class="center">No matching records</td></tr>'
+        return (
+            '<html><head><style>'+self._print_styles()+'</style></head><body>'
+            +self._official_heading(mode.upper())
+            +'<div class="meta">Report based on saved records for the selected academic term.</div>'
+            +'<table><thead><tr>'+columns+'</tr></thead><tbody>'+entries+'</tbody></table>'
+            +self._print_footer()+'</body></html>'
         )
 
     def document(self):
         doc=QTextDocument()
-        if self.report.currentText() in REPORTS[:4]:
-            doc.setHtml(self._timetable_html())
-            return doc
-        esc=lambda x:html.escape(str(x))
-        doc.setHtml('<h1>ClassFlow</h1><h2>'+esc(self.report.currentText())+'</h2><p>'+esc(self.win.term_name())+'</p><p>'+esc(self.banner.title.text())+'</p><table border="1" cellspacing="0" cellpadding="6"><tr>'+''.join('<th>'+esc(h)+'</th>' for h in self.headers)+'</tr>'+''.join('<tr>'+''.join('<td>'+esc(v)+'</td>' for v in row)+'</tr>' for row in self.output)+'</table>')
+        doc.setHtml(self._timetable_html() if self.report.currentText() in REPORTS[:4]
+                    else self._table_report_html())
         return doc
 
     def export_pdf(self):
