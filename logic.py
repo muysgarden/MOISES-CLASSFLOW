@@ -228,14 +228,17 @@ def validate_term(term_id):
                 gb = row_group[b["id"]]
                 if ga is gb or not overlap(a["start_min"], a["end_min"], b["start_min"], b["end_min"]):
                     continue
+                when = (f"{day} {fmt(max(a['start_min'], b['start_min']))}–"
+                        f"{fmt(min(a['end_min'], b['end_min']))}")
                 for kind, same, desc in (
                     ("Faculty Conflict", a["faculty_id"] == b["faculty_id"],
-                     f"{a['faculty']} is assigned to {a['code']} and {b['code']} at the same time ({day})."),
+                     f"{a['faculty']} teaches both {a['code']} ({a['section']}) and "
+                     f"{b['code']} ({b['section']}) during {when}."),
                     ("Classroom Conflict", a["room_id"] == b["room_id"],
-                     f"{a['room']} is already occupied by {b['code']} ({b['section']}) on {day} "
-                     f"{fmt(b['start_min'])}."),
+                     f"{a['room']} is assigned to both {a['code']} ({a['section']}) "
+                     f"and {b['code']} ({b['section']}) during {when}."),
                     ("Section Conflict", a["section_id"] == b["section_id"],
-                     f"{a['section']} has {a['code']} and {b['code']} overlapping on {day}."),
+                     f"{a['section']} has both {a['code']} and {b['code']} during {when}."),
                 ):
                     key = (kind, frozenset((id(ga), id(gb))))
                     if same and key not in seen:

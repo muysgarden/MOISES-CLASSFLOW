@@ -132,6 +132,31 @@ class SystemTests(unittest.TestCase):
         self.assertFalse(logic.overlap(480,540,540,600))
         self.assertEqual(logic.check_candidate(1,r['subject_id'],r['section_id'],r['faculty_id'],r['room_id'],['Mon'],600,500)[0]['type'],'Invalid Time')
 
+    def test_conflict_checks_filters_and_edit_navigation(self):
+        win = MainWindow()
+        win.go('validation')
+        page = win.pages['validation']
+        page.refresh()
+        result = logic.validate_term(win.term_id())
+        for severity in (logic.CRITICAL, logic.WARNING, logic.REVIEW):
+            self.assertEqual(int(page.counts[severity].text()),
+                             sum(i['severity'] == severity for i in result['issues']))
+        page.severity.setCurrentIndex(page.severity.findText(logic.CRITICAL))
+        self.assertEqual(page.table.rowCount(), result['critical'])
+        page.section.setCurrentIndex(1)
+        section_name = page.section.currentText()
+        self.assertTrue(all(section_name in page.table.item(row, 2).text()
+                            for row in range(page.table.rowCount())))
+        page.section.setCurrentIndex(0)
+        self.assertGreater(page.table.rowCount(), 0)
+        issue = next(i for i in result['issues'] if i['severity'] == logic.CRITICAL)
+        action = page.table.cellWidget(0, 4).findChild(QPushButton)
+        self.assertIsNotNone(action)
+        action.click()
+        self.assertEqual(win.stack.currentWidget(), win.pages['schedules'])
+        self.assertEqual(set(win.pages['schedules'].replace_ids), set(issue['edit_ids']))
+        win.close()
+
     def test_module_three_pagination_days_and_calendar(self):
         win = MainWindow()
         page = win.pages['schedules']

@@ -80,12 +80,16 @@ The class assignment form is hidden until the administrator clicks **New Schedul
 
 **Saved Schedules** and **Weekly Calendar** are separate views. Saved Schedules has distinct **Course**, **Section**, and **Subject** columns, a section filter, text search, and **8 assignments per page** with Previous/Next controls rather than a long, internally scrolling table. The calendar starts with an empty **Search section** field so unrelated classes do not overlap visually; typing offers matching section suggestions, and choosing a valid section displays its timetable against **30-minute** time markers (7:00, 7:30, 8:00, etc.). Saved schedules remain editable and deletable with the original safeguards.
 
+## Phase 5: Conflict Checks (Module 4)
+
+The conflict screen uses three priority summaries rather than a wall of separate issue counters: **Needs fixing** (critical overlaps or unavailable resources), **Warnings** (capacity or teaching load), and **Review** (time-window exceptions). Actual database assignments determine the counts. Filter by section, priority, or issue type. Each result names the affected subject and section, explains the specific conflict (including the overlapping time when applicable), and has an **Edit** action that opens the corresponding assignment in Module 3. Editing is a manual correction; the action does not claim to resolve conflicts automatically. Running the checks again refreshes the results.
+
 ## Modules
 
 1. **Academic Data Management** — add, edit, delete, search, and filter programs, sections, subjects, faculty, classrooms, academic terms, and school periods. In-use records are protected from deletion.
 2. **Faculty and Room Availability** — find available resources by day/time/type; view teaching loads and actual weekly availability blocks. Mark resource unavailability, or clear its saved windows. The three daily grid blocks are 8 AM–12 PM, 1 PM–5 PM, and 5 PM–8 PM. Unavailability preferences apply across academic terms.
 3. **Schedule Management** — assign a subject, section, faculty member, room, days, and start/end time. Preview conflicts before saving, edit/delete assignments, search, and view section calendars. Critical conflicts block saving; warnings require confirmation.
-4. **Conflict Detection and Validation** — detect faculty/room/section overlaps, room-capacity problems, excessive teaching loads, invalid school times, and unavailable resources. Filter results and open the affected assignment with Resolve.
+4. **Conflict Detection and Validation** — detect faculty/room/section overlaps, room-capacity problems, excessive teaching loads, invalid school times, and unavailable resources. Filter results and open an affected assignment with Edit.
 5. **Timetable Generation and Reports** — generate views from saved assignments, filter by program/section/faculty/room, view actual room utilization, faculty loads, conflict reports, and available rooms. Export PDF or CSV and use the system print dialog. Generate Timetable refreshes a timetable from assignments; it does not automatically assign unscheduled classes.
 
 ## Verification
