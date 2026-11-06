@@ -1,9 +1,10 @@
 """Module 3: readable class assignment editor and schedule views."""
 
+import math
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QAbstractItemView, QCompleter, QFrame, QGridLayout, QHBoxLayout,
-    QLineEdit, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget,
+    QAbstractItemView, QCheckBox, QCompleter, QFrame, QGridLayout, QHBoxLayout,
+    QLabel, QLineEdit, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget,
 )
 
 import db
@@ -39,6 +40,7 @@ class SchedulesPage(Page):
     def __init__(self, win):
         super().__init__(win)
         self.replace_ids = []
+        self.page_no = 0
         self.setObjectName("schedulesPage")
         self.setStyleSheet("""
             #schedulesPage QFrame#scheduleEditor {
@@ -82,6 +84,9 @@ class SchedulesPage(Page):
             "font-size: 16px; font-weight: 750; text-align: left; padding: 0;"
         )
         layout.addWidget(self.form_title)
+        self.course_hint = QLabel("Course: Choose a section to identify its program")
+        self.course_hint.setStyleSheet("color: #64748B; font-size: 12px;")
+        layout.addWidget(self.course_hint)
         grid = QGridLayout()
         grid.setSpacing(12)
         self.fields = {}
@@ -90,19 +95,37 @@ class SchedulesPage(Page):
             widget.lineEdit().setPlaceholderText(f"Search {title.lower()}…")
             self.fields[key] = widget
             grid.addWidget(labeled(title, widget), 0, index)
-        self.fields["days"] = searchable()
-        self.fields["days"].lineEdit().setPlaceholderText("Choose class days…")
-        for value, title in logic.PATTERNS:
-            self.fields["days"].addItem(title, value)
         self.fields["start"] = time_combo()
         self.fields["end"] = time_combo()
         self.fields["start"].lineEdit().setPlaceholderText("e.g. 8:15 AM")
         self.fields["end"].lineEdit().setPlaceholderText("e.g. 10:45 AM")
-        for col, (key, title) in enumerate(
-            (("days", "Class days"), ("start", "From"), ("end", "Until"))
-        ):
-            grid.addWidget(labeled(title, self.fields[key]), 1, col)
+        days_panel = QWidget()
+        day_box = QVBoxLayout(days_panel)
+        day_box.setContentsMargins(0, 0, 0, 0)
+        day_box.setSpacing(5)
+        label_days = QLabel("CLASS DAYS")
+        label_days.setObjectName("fieldLabel")
+        day_box.addWidget(label_days)
+        day_row = QHBoxLayout()
+        day_row.setSpacing(5)
+        self.day_checks = {}
+        for code, _name in db.DAYS:
+            check = QCheckBox(code)
+            check.toggled.connect(self.preview)
+            self.day_checks[code] = check
+            day_row.addWidget(check)
+        day_box.addLayout(day_row)
+        grid.addWidget(days_panel, 1, 0, 1, 2)
+        grid.addWidget(labeled("From", self.fields["start"]), 1, 2)
+        grid.addWidget(labeled("Until", self.fields["end"]), 1, 3)
         layout.addLayout(grid)
+        hint = QLabel(
+            "Select multiple days only when their class times are the same. "
+            "For different times, save separate assignments for each day."
+        )
+        hint.setObjectName("muted")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
         self.status = Banner("good", "Choose the class details to check availability.")
         layout.addWidget(self.status)
         actions = QHBoxLayout()
@@ -128,17 +151,38 @@ class SchedulesPage(Page):
         listing_layout = QVBoxLayout(listing_page)
         listing_layout.setContentsMargins(0, 10, 0, 0)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Search schedules by subject, section, faculty, or room…")
-        self.search.setMinimumWidth(280)
-        self.search.textChanged.connect(self.render)
-        listing = Card("Saved Schedules", "Assignments for the selected academic term", right=[self.search])
+        self.search.setPlaceholderText("Search schedules…")
+        self.search.setFixedWidth(230)
+        self.search.textChanged.connect(self._filters_changed)
+        self.list_section = Combo()
+        self.list_section.setMinimumWidth(170)
+        self.list_section.addItem("All sections", None)
+        self.list_section.currentIndexChanged.connect(self._filters_changed)
+        listing = Card(
+            "Saved Schedules", "Filter by section or search records",
+            right=[self.list_section, self.search],
+        )
         listing_layout.addWidget(listing)
         self.table = make_table(
-            ["Subject / Section", "Faculty", "Room", "Days & Time", "Actions"],
-            row_h=54, fixed={4: 165}, flex={0: 3, 1: 3, 2: 2, 3: 3},
+            ["Course", "Section", "Subject", "Faculty", "Room", "Days & Time", "Actions"],
+            row_h=44, fixed={0: 78, 6: 158},
+            flex={1: 2, 2: 2, 3: 2, 4: 2, 5: 3},
         )
-        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         listing.add(self.table)
+        footer = QWidget()
+        pagination = QHBoxLayout(footer)
+        pagination.setContentsMargins(15, 7, 15, 10)
+        self.page_info = QLabel("")
+        pagination.addWidget(self.page_info)
+        pagination.addStretch()
+        self.prev_page = button("Previous", "pg", lambda: self._goto_page(self.page_no - 1))
+        self.next_page = button("Next", "pg", lambda: self._goto_page(self.page_no + 1))
+        self.current_page = QLabel("")
+        pagination.addWidget(self.prev_page)
+        pagination.addWidget(self.current_page)
+        pagination.addWidget(self.next_page)
+        listing.add(footer)
         self.views.addTab(listing_page, "Saved Schedules")
 
         calendar_page = QWidget()
@@ -152,7 +196,7 @@ class SchedulesPage(Page):
             right=[self.section],
         )
         self.calendar_card = calendar_card
-        self.calendar = CalendarWidget()
+        self.calendar = CalendarWidget(step_minutes=30)
         calendar_card.body().addWidget(self.calendar)
         calendar_layout.addWidget(calendar_card)
         self.views.addTab(calendar_page, "Weekly Calendar")
@@ -195,12 +239,22 @@ class SchedulesPage(Page):
             self.section.addItem(record["name"], record["id"])
         self.section.setCurrentIndex(max(0, self.section.findData(keep)))
         self.section.blockSignals(False)
+        keep_list = self.list_section.currentData()
+        self.list_section.blockSignals(True)
+        self.list_section.clear()
+        self.list_section.addItem("All sections", None)
+        for record in db.rows("SELECT id,name FROM sections ORDER BY name"):
+            self.list_section.addItem(record["name"], record["id"])
+        self.list_section.setCurrentIndex(max(0, self.list_section.findData(keep_list)))
+        self.list_section.blockSignals(False)
         self.render()
         self.preview()
 
     def values(self):
         values = {key: self._lookup_value(self.fields[key]) for key, _, _ in LOOKUPS}
-        values["days"] = self._lookup_value(self.fields["days"])
+        values["days"] = ",".join(
+            code for code, _name in db.DAYS if self.day_checks[code].isChecked()
+        ) or None
         for key in ("start", "end"):
             try:
                 values[key] = parse_time(self.fields[key].currentText())
@@ -219,6 +273,15 @@ class SchedulesPage(Page):
         if not hasattr(self, "status"):
             return
         values = self.values()
+        course = db.row(
+            """SELECT p.code FROM sections s
+               JOIN programs p ON p.id=s.program_id WHERE s.id=?""",
+            (values["section_id"],),
+        ) if values["section_id"] is not None else None
+        self.course_hint.setText(
+            f"Course: {course['code']} (based on selected section)"
+            if course else "Course: Choose a section to identify its program"
+        )
         missing = self._missing(values)
         if missing:
             self.status.title.setText("Complete the assignment details")
@@ -288,10 +351,20 @@ class SchedulesPage(Page):
         self.replace_ids = []
         for combo in self.fields.values():
             self._clear_combo(combo)
+        for check in self.day_checks.values():
+            check.setChecked(False)
         self.form_title.setText("New class assignment")
         self.save_button.setText("Save Schedule")
         self.editor.hide()
         self.preview()
+
+    def _filters_changed(self, *_):
+        self.page_no = 0
+        self.render()
+
+    def _goto_page(self, page):
+        self.page_no = page
+        self.render()
 
     def render(self, *_):
         self.groups = logic.group_rows(logic.schedule_rows(self.win.term_id()))
@@ -299,11 +372,23 @@ class SchedulesPage(Page):
         groups = [
             group for group in self.groups
             if query in " ".join(str(value) for value in group.values()).casefold()
+            and (self.list_section.currentData() is None
+                 or group["section_id"] == self.list_section.currentData())
         ]
+        pages = max(1, math.ceil(len(groups) / 10))
+        self.page_no = min(max(0, self.page_no), pages - 1)
+        start = self.page_no * 10
+        groups = groups[start:start + 10]
+        sections = {
+            record["id"]: record["code"] for record in db.rows(
+                "SELECT s.id,p.code FROM sections s JOIN programs p ON p.id=s.program_id"
+            )
+        }
         self.table.setRowCount(len(groups))
         for index, group in enumerate(groups):
             values = [
-                group["code"] + " · " + group["section"],
+                sections.get(group["section_id"], "—"),
+                group["section"], group["code"] + " · " + group["title"],
                 group["faculty"], group["room"],
                 group["days_label"] + "\n" + group["time_label"],
             ]
@@ -317,9 +402,22 @@ class SchedulesPage(Page):
             actions.setSpacing(3)
             actions.addWidget(button("Edit", "linkbtn", lambda _=False, g=group: self.edit(g)))
             actions.addWidget(button("Delete", "danger", lambda _=False, g=group: self.delete(g)))
-            widget_cell(self.table, index, 4, action_host)
-        height = self.table.horizontalHeader().height() + min(len(groups), 8) * 54 + 3
+            widget_cell(self.table, index, 6, action_host)
+        height = self.table.horizontalHeader().height() + len(groups) * 44 + 3
         self.table.setFixedHeight(max(100, height))
+        count = sum(
+            query in " ".join(str(value) for value in group.values()).casefold()
+            and (self.list_section.currentData() is None
+                 or group["section_id"] == self.list_section.currentData())
+            for group in self.groups
+        )
+        self.page_info.setText(
+            f"Showing {start + 1}–{start + len(groups)} of {count} schedules"
+            if count else "No matching schedules"
+        )
+        self.current_page.setText(f"Page {self.page_no + 1} of {pages}")
+        self.prev_page.setEnabled(self.page_no > 0)
+        self.next_page.setEnabled(self.page_no < pages - 1)
         self.render_calendar()
 
     def render_calendar(self, *_):
@@ -339,12 +437,8 @@ class SchedulesPage(Page):
         for key, _, _ in LOOKUPS:
             combo = self.fields[key]
             combo.setCurrentIndex(combo.findData(group[key]))
-        days = self.fields["days"]
-        index = days.findData(group["days_csv"])
-        if index < 0:
-            days.addItem(group["days_label"], group["days_csv"])
-            index = days.count() - 1
-        days.setCurrentIndex(index)
+        for code, check in self.day_checks.items():
+            check.setChecked(code in group["days"])
         self.fields["start"].setEditText(logic.fmt(group["start_min"]))
         self.fields["end"].setEditText(logic.fmt(group["end_min"]))
         self.form_title.setText(f"Editing {group['code']} · {group['section']}")

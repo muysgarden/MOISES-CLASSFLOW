@@ -449,10 +449,13 @@ class CalendarWidget(QWidget):
         "lab": ("#fff4df", "#d89b3b", "#916018"),
     }
 
-    def __init__(self):
+    def __init__(self, step_minutes=60):
         super().__init__()
         self.rows, self.sub_key = [], "room"
-        self.hours = (logic.CAL_END - logic.CAL_START) // 60
+        self.step_minutes = step_minutes
+        self.hours = (logic.CAL_END - logic.CAL_START) // step_minutes
+        if step_minutes == 30:
+            self.ROW_H = 29
         self.setFixedHeight(self.HEADER + self.hours * self.ROW_H + 2)
         self.setMinimumWidth(480)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -486,7 +489,8 @@ class CalendarWidget(QWidget):
             p.drawLine(self.TIMECOL, y, W, y)
             p.setPen(QColor("#7b869c"))
             p.drawText(QRectF(0, y + (2 if h == 0 else -7), self.TIMECOL - 8, 14),
-                       Qt.AlignRight | Qt.AlignVCenter, logic.fmt(logic.CAL_START + h * 60))
+                       Qt.AlignRight | Qt.AlignVCenter,
+                       logic.fmt(logic.CAL_START + h * self.step_minutes))
         p.setPen(QPen(QColor("#e6e9f0"), 1))
         for i in range(7):
             x = self.TIMECOL + i * colw
@@ -497,8 +501,8 @@ class CalendarWidget(QWidget):
             if e <= s:
                 continue
             x = self.TIMECOL + logic.DAY_CODES.index(r["day"]) * colw + 3
-            y = self.HEADER + (s - logic.CAL_START) / 60 * self.ROW_H + 1
-            h = max((e - s) / 60 * self.ROW_H - 3, 18)
+            y = self.HEADER + (s - logic.CAL_START) / self.step_minutes * self.ROW_H + 1
+            h = max((e - s) / self.step_minutes * self.ROW_H - 3, 18)
             bg, accent, fg = self.COLORS[r["category"]]
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(bg))

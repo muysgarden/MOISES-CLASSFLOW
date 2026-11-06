@@ -129,6 +129,14 @@ def check_candidate(term_id, subject_id, section_id, faculty_id, room_id, days, 
         return [_issue("Invalid Time", CRITICAL, "Select at least one valid day.")]
     if any(x is None for x in (subject, section, faculty, room)):
         return [_issue("Invalid Assignment", CRITICAL, "A selected record no longer exists. Refresh and try again.")]
+    if not db.row(
+        "SELECT 1 FROM subject_programs WHERE subject_id=? AND program_id=?",
+        (subject_id, section["program_id"]),
+    ):
+        issues.append(_issue(
+            "Course Mismatch", CRITICAL,
+            f"{subject['code']} is not assigned to the selected section's academic program.",
+        ))
     if db.row("SELECT 1 FROM sqlite_master WHERE type='table' AND name='unavailable'"):
         for kind, rid, name in (("faculty", faculty_id, faculty['name']), ("room", room_id, room['name'])):
             for window in db.rows("SELECT * FROM unavailable WHERE kind=? AND resource_id=?", (kind, rid)):

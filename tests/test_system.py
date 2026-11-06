@@ -132,6 +132,35 @@ class SystemTests(unittest.TestCase):
         self.assertFalse(logic.overlap(480,540,540,600))
         self.assertEqual(logic.check_candidate(1,r['subject_id'],r['section_id'],r['faculty_id'],r['room_id'],['Mon'],600,500)[0]['type'],'Invalid Time')
 
+    def test_module_three_pagination_days_and_calendar(self):
+        win = MainWindow()
+        page = win.pages['schedules']
+        page.refresh()
+        self.assertLessEqual(page.table.rowCount(), 10)
+        self.assertIn('of', page.current_page.text())
+        self.assertEqual(page.calendar.step_minutes, 30)
+
+        page.next_page.click()
+        self.assertLessEqual(page.table.rowCount(), 10)
+        if page.page_no:
+            self.assertTrue(page.prev_page.isEnabled())
+        page.list_section.setCurrentIndex(1)
+        self.assertEqual(page.page_no, 0)
+        selected_section = page.list_section.currentText()
+        self.assertTrue(all(page.table.item(row, 1).text() == selected_section
+                            for row in range(page.table.rowCount())))
+
+        page.new_schedule()
+        page.day_checks['Mon'].setChecked(True)
+        page.day_checks['Wed'].setChecked(True)
+        self.assertEqual(page.values()['days'], 'Mon,Wed')
+        page.day_checks['Wed'].setChecked(False)
+        self.assertEqual(page.values()['days'], 'Mon')
+        page.section.setCurrentIndex(1)
+        self.assertIsNotNone(page.section.currentData())
+        page.render_calendar()
+        win.close()
+
     def test_availability_and_persistence(self):
         r=logic.schedule_rows(1)[0]
         with db.conn:
@@ -250,7 +279,8 @@ class SystemTests(unittest.TestCase):
                            ('faculty_id', 'faculty'), ('room_id', 'classrooms')]:
             record = db.row(f'SELECT id FROM {table} ORDER BY id LIMIT 1')
             page.fields[key].setCurrentIndex(page.fields[key].findData(record['id']))
-        for key,value in [('days','Sat'),('start',780),('end',840)]:
+        page.day_checks['Sat'].setChecked(True)
+        for key,value in [('start',780),('end',840)]:
             page.fields[key].setCurrentIndex(page.fields[key].findData(value))
         before=db.row('SELECT COUNT(*) FROM schedules')[0]
         page.save()
