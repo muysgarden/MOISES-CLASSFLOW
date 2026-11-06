@@ -84,6 +84,10 @@ The class assignment form is hidden until the administrator clicks **New Schedul
 
 The conflict screen uses three color-coded **clickable** priority summaries instead of redundant dropdown filters: **Critical** (red, overlapping classes or unavailable resources), **Warning** (orange, capacity or teaching load), and **Review** (blue, time-window exceptions). Click a card to filter to that priority; click the active card again to show all issues. Issue priorities are also color-coded in the list. Actual database assignments determine the counts. Select a result row to view a simple detail panel explaining the conflict (including the overlapping time when applicable) and a single **View in Schedules** action that opens the corresponding assignment in Module 3. Editing is a manual correction; Module 4 does not claim to resolve conflicts automatically. Running the checks again refreshes the results.
 
+## Typography
+
+The desktop interface uses **Segoe UI Variable** where installed (Windows 11), falling back to **Segoe UI** on earlier Windows versions. Display headings have lighter, calmer weights, and navigation labels, table headers, and field captions use readable sizes. No internet download or external font installation is required. Concept illustrations generated on non-Windows machines may use a substitute font; the running application uses the configured Windows typeface.
+
 ## Modules
 
 1. **Academic Data Management** — add, edit, delete, search, and filter programs, sections, subjects, faculty, classrooms, academic terms, and school periods. In-use records are protected from deletion.
