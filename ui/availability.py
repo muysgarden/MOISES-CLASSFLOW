@@ -1,5 +1,6 @@
 """Readable, time-specific faculty and room availability (Module 2)."""
 
+from datetime import datetime
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QCompleter, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -14,7 +15,11 @@ from ui.widgets import Page, Combo, button, clear_layout
 def init_availability():
     db.conn.execute('''CREATE TABLE IF NOT EXISTS unavailable(
         id INTEGER PRIMARY KEY, kind TEXT NOT NULL, resource_id INTEGER NOT NULL,
-        day TEXT NOT NULL, start_min INTEGER NOT NULL, end_min INTEGER NOT NULL)''')
+        day TEXT NOT NULL, start_min INTEGER NOT NULL, end_min INTEGER NOT NULL,
+        reason TEXT NOT NULL DEFAULT '')''')
+    columns = {r['name'] for r in db.conn.execute("PRAGMA table_info(unavailable)")}
+    if 'reason' not in columns:
+        db.conn.execute("ALTER TABLE unavailable ADD COLUMN reason TEXT NOT NULL DEFAULT ''")
     db.conn.commit()
 
 
@@ -35,6 +40,26 @@ def searchable_combo():
     completer.setCompletionMode(QCompleter.PopupCompletion)
     combo.setCompleter(completer)
     return combo
+
+
+def time_combo():
+    """Quarter-hour suggestions plus free entry for exact minutes."""
+    combo = searchable_combo()
+    for minute in range(7 * 60, 20 * 60 + 1, 15):
+        combo.addItem(logic.fmt(minute), minute)
+    return combo
+
+
+def parse_time(value):
+    """Parse an entered time; never trust stale QComboBox.currentData()."""
+    entered = value.strip().upper().replace('.', '')
+    for pattern in ('%I:%M %p', '%I %p', '%H:%M'):
+        try:
+            result = datetime.strptime(entered, pattern)
+            return result.hour * 60 + result.minute
+        except ValueError:
+            pass
+    raise ValueError("Enter a valid time, such as 8:15 AM or 1:45 PM.")
 
 
 class AvailabilityPage(Page):
@@ -188,11 +213,8 @@ class AvailabilityPage(Page):
         self.block_day = Combo()
         for code, name in db.DAYS:
             self.block_day.addItem(name, code)
-        self.block_start = Combo()
-        self.block_end = Combo()
-        for minute, title in logic.TIME_CHOICES:
-            self.block_start.addItem(title, minute)
-            self.block_end.addItem(title, minute)
+        self.block_start = time_combo()
+        self.block_end = time_combo()
         self.block_start.setCurrentIndex(self.block_start.findData(8 * 60))
         self.block_end.setCurrentIndex(self.block_end.findData(9 * 60))
         for title, control in (
@@ -205,6 +227,14 @@ class AvailabilityPage(Page):
             col.addWidget(control)
             fields.addLayout(col, 3 if title == "Faculty / room" else 2)
         v.addLayout(fields)
+        reason_row = QVBoxLayout()
+        reason_row.setSpacing(5)
+        reason_row.addWidget(self._label("Reason (optional)"))
+        self.block_reason = QLineEdit()
+        self.block_reason.setMaxLength(180)
+        self.block_reason.setPlaceholderText("e.g. Faculty meeting, maintenance, school activity")
+        reason_row.addWidget(self.block_reason)
+        v.addLayout(reason_row)
         save = button("Mark unavailable", "primary", self.save_unavailability)
         v.addWidget(save, 0, Qt.AlignRight)
         v.addWidget(self._label("Saved unavailable windows", "availHeading"))
@@ -251,7 +281,8 @@ class AvailabilityPage(Page):
             day = dict(db.DAYS).get(item["day"], item["day"])
             row = QHBoxLayout()
             row.addWidget(self._label(
-                f"{name}  ·  {day}  ·  {logic.fmt(item['start_min'])}–{logic.fmt(item['end_min'])}",
+                f"{name}  ·  {day}  ·  {logic.fmt(item['start_min'])}–{logic.fmt(item['end_min'])}"
+                + (f"  ·  {item['reason']}" if item['reason'] else ""),
                 "availInfo",
             ))
             row.addStretch()
@@ -269,7 +300,12 @@ class AvailabilityPage(Page):
         if resource is None:
             self.win.notify("Choose a faculty member or classroom from the suggestions.", "warning")
             return
-        start, end = self.block_start.currentData(), self.block_end.currentData()
+        try:
+            start = parse_time(self.block_start.currentText())
+            end = parse_time(self.block_end.currentText())
+        except ValueError as exc:
+            self.win.notify(str(exc), "warning")
+            return
         if end <= start:
             self.win.notify("End time must be later than start time.", "warning")
             return
@@ -281,9 +317,11 @@ class AvailabilityPage(Page):
             return
         with db.conn:
             db.conn.execute(
-                "INSERT INTO unavailable(kind,resource_id,day,start_min,end_min) VALUES(?,?,?,?,?)",
-                (resource[0], resource[1], day, start, end),
+                "INSERT INTO unavailable(kind,resource_id,day,start_min,end_min,reason) VALUES(?,?,?,?,?,?)",
+                (resource[0], resource[1], day, start, end,
+                 self.block_reason.text().strip()),
             )
+        self.block_reason.clear()
         self.refresh()
         self.win.notify("Unavailable time saved.", "success")
 
@@ -300,13 +338,13 @@ class AvailabilityPage(Page):
 
     def _availability(self, kind, rid, day, start, end, schedules):
         blocked = db.row(
-            """SELECT 1 FROM unavailable
+            """SELECT reason FROM unavailable
                WHERE kind=? AND resource_id=? AND day=?
                  AND start_min<? AND end_min>? LIMIT 1""",
             (kind, rid, day, end, start),
         )
         if blocked:
-            return "Unavailable", "Marked unavailable for this time", False
+            return "Unavailable", blocked["reason"] or "Marked unavailable for this time", False
         key = "faculty_id" if kind == "faculty" else "room_id"
         busy = [s for s in schedules if s[key] == rid and s["day"] == day
                 and logic.overlap(start, end, s["start_min"], s["end_min"])]

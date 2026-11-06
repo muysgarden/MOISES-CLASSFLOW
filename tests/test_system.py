@@ -10,7 +10,7 @@ from PyQt5.QtCore import Qt
 import db
 import auth
 import logic
-from ui.availability import init_availability, unavailable
+from ui.availability import init_availability, unavailable, parse_time
 from ui.login import LoginDialog
 from ui.main_window import MainWindow
 from ui.profile import AccountSettingsPage
@@ -169,14 +169,42 @@ class SystemTests(unittest.TestCase):
         page.block_day.setCurrentIndex(page.block_day.findData('Sat'))
         page.block_start.setCurrentIndex(page.block_start.findData(8 * 60))
         page.block_end.setCurrentIndex(page.block_end.findData(9 * 60))
+        self.assertTrue(page.block_start.isEditable())
+        self.assertTrue(page.block_end.isEditable())
+        page.block_start.setEditText('8:15 AM')
+        page.block_end.setEditText('9:45 AM')
+        page.block_reason.setText('Faculty meeting')
         page.save_unavailability()
         block = db.row('SELECT * FROM unavailable ORDER BY id DESC LIMIT 1')
         self.assertEqual(block['resource_id'], faculty['id'])
-        self.assertTrue(unavailable('faculty', faculty['id'], 'Sat', 8 * 60, 9 * 60))
+        self.assertEqual((block['start_min'], block['end_min']), (495, 585))
+        self.assertEqual(block['reason'], 'Faculty meeting')
+        self.assertTrue(unavailable('faculty', faculty['id'], 'Sat', 8 * 60 + 15, 9 * 60))
         with patch('ui.availability.QMessageBox.question', return_value=QMessageBox.Yes):
             page.remove_unavailability(block['id'])
         self.assertFalse(unavailable('faculty', faculty['id'], 'Sat', 8 * 60, 9 * 60))
+        self.assertEqual(parse_time('1:45 PM'), 13 * 60 + 45)
+        self.assertEqual(parse_time('13:45'), 13 * 60 + 45)
+        with self.assertRaises(ValueError):
+            parse_time('35:99 AM')
+        page.block_start.setEditText('not a time')
+        page.save_unavailability()
+        self.assertEqual(db.row('SELECT COUNT(*) FROM unavailable')[0], before)
         win.close()
+
+    def test_previous_availability_records_gain_optional_reason(self):
+        db.conn.execute('DROP TABLE unavailable')
+        db.conn.execute('''CREATE TABLE unavailable(
+            id INTEGER PRIMARY KEY, kind TEXT NOT NULL, resource_id INTEGER NOT NULL,
+            day TEXT NOT NULL, start_min INTEGER NOT NULL, end_min INTEGER NOT NULL)''')
+        db.conn.execute(
+            "INSERT INTO unavailable(kind,resource_id,day,start_min,end_min) VALUES('room',1,'Mon',480,540)"
+        )
+        db.conn.commit()
+        init_availability()
+        existing = db.row('SELECT * FROM unavailable WHERE kind=?', ('room',))
+        self.assertEqual(existing['reason'], '')
+        self.assertEqual(existing['start_min'], 480)
 
     def test_empty_database_workflow(self):
         db.conn.close(); db.init(':memory:'); auth.init(); init_availability()
