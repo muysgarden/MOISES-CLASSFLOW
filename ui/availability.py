@@ -264,7 +264,7 @@ class AvailabilityPage(Page):
         header.setSectionResizeMode(4, QHeaderView.Fixed)
         self.blocks.setColumnWidth(1, 100)
         self.blocks.setColumnWidth(2, 190)
-        self.blocks.setColumnWidth(4, 118)
+        self.blocks.setColumnWidth(4, 132)
         self.blocks.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         v.addWidget(self.blocks)
         self.block_empty = self._label("No blocked time records yet.")
@@ -322,8 +322,13 @@ class AvailabilityPage(Page):
                 self.blocks.setItem(index, col, cell)
             remove = QPushButton("Remove")
             remove.setObjectName("availRemove")
+            remove.setFixedSize(98, 31)
             remove.clicked.connect(lambda _=False, rid=item["id"]: self.remove_unavailability(rid))
-            self.blocks.setCellWidget(index, 4, remove)
+            action_cell = QWidget()
+            action_layout = QHBoxLayout(action_cell)
+            action_layout.setContentsMargins(6, 3, 6, 3)
+            action_layout.addWidget(remove, 0, Qt.AlignCenter)
+            self.blocks.setCellWidget(index, 4, action_cell)
 
     def save_unavailability(self):
         typed = self.resource.currentText().strip()

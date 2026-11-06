@@ -3,7 +3,7 @@ os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 import unittest
 from unittest.mock import patch
 import tempfile
-from PyQt5.QtWidgets import QApplication, QFrame, QMessageBox
+from PyQt5.QtWidgets import QApplication, QFrame, QMessageBox, QPushButton
 from PyQt5.QtPrintSupport import QPrinter
 from PyQt5.QtTest import QTest
 from PyQt5.QtCore import Qt
@@ -182,6 +182,9 @@ class SystemTests(unittest.TestCase):
         self.assertEqual(page.blocks.columnCount(), 5)
         self.assertEqual(page.blocks.rowCount(), 1)
         self.assertEqual(page.blocks.item(0, 3).text(), 'Faculty meeting')
+        remove_button = page.blocks.cellWidget(0, 4).findChild(QPushButton)
+        self.assertEqual(remove_button.text(), 'Remove')
+        self.assertGreater(remove_button.width(), remove_button.fontMetrics().horizontalAdvance('Remove') + 20)
         self.assertEqual((block['start_min'], block['end_min']), (495, 585))
         self.assertEqual(block['reason'], 'Faculty meeting')
         self.assertTrue(unavailable('faculty', faculty['id'], 'Sat', 8 * 60 + 15, 9 * 60))
