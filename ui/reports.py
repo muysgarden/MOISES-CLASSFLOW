@@ -236,16 +236,13 @@ class ReportsPage(Page):
                         continue
                     # In unusual conflicting schedules, preserve all meeting
                     # labels rather than silently dropping a second meeting.
-                    if first in occupied:
-                        starts.setdefault(first,[]).append(meeting)
-                        continue
                     slots=list(range(first,last,30))
                     if any(t in occupied for t in slots):
                         # Overlaps cannot be expressed as independent merged
                         # cells in the same column; attach a warning to the
                         # initial occupied block instead of hiding the meeting.
                         anchor=next((k for k,v in starts.items() if k<=first and
-                                     k+v[0][1]*30>first),first)
+                                     k+v[1]*30>first),first)
                         if anchor in starts:
                             starts[anchor][2].append(meeting)
                         continue
