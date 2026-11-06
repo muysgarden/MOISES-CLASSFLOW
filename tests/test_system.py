@@ -159,6 +159,8 @@ class SystemTests(unittest.TestCase):
         # genuine unavailable window; invalid ad-hoc names are not accepted.
         page.update_availability()
         self.assertFalse(page.editor.isHidden())
+        self.assertLess(page.lay.indexOf(page.editor), page.lay.indexOf(page.tabs))
+        self.assertIn('Hide Availability Form', page.editor_toggle.text())
         self.assertTrue(page.resource.isEditable())
         page.resource.setEditText('made up name')
         before = db.row('SELECT COUNT(*) FROM unavailable')[0]

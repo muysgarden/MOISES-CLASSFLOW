@@ -78,8 +78,9 @@ class AvailabilityPage(Page):
             #availabilityPage QFrame#availPanel, #availabilityPage QFrame#availItem {
                 background: white; border: 1px solid #E4EAF3; border-radius: 13px; }
             #availabilityPage QPushButton#availToggle {
-                border: 1px solid #C7D7FA; background: white; color: #2955CE;
-                border-radius: 9px; padding: 10px 16px; font-weight: 700; }
+                border: none; background: #315CD5; color: white;
+                border-radius: 9px; padding: 11px 16px; font-weight: 700; }
+            #availabilityPage QPushButton#availToggle:hover { background: #244CC1; }
             #availabilityPage QPushButton#availRemove {
                 background: #FFF0F0; color: #AC4242; border: none; border-radius: 7px;
                 padding: 6px 12px; }
@@ -92,13 +93,18 @@ class AvailabilityPage(Page):
                 background: white; border: 1px solid #DDE6F4; border-radius: 8px;
                 padding: 8px 10px; min-height: 27px; }
         """)
+        self.editor_toggle = QPushButton("Manage Availability  ▾")
+        self.editor_toggle.setObjectName("availToggle")
+        self.editor_toggle.setCursor(Qt.PointingHandCursor)
+        self.editor_toggle.clicked.connect(self.update_availability)
         self.add_header(
             "MODULE 02", "Faculty & Room Availability",
-            "See who and what is free for the exact day and time you choose."
+            "See who and what is free for the exact day and time you choose.",
+            [self.editor_toggle],
         )
         self._build_filters()
-        self._build_results()
         self._build_editor()
+        self._build_results()
         self.finish()
         self.refresh()
 
@@ -193,12 +199,6 @@ class AvailabilityPage(Page):
         self.lay.addWidget(self.summary)
 
     def _build_editor(self):
-        toggle = QPushButton("Manage unavailable times  ▾")
-        toggle.setObjectName("availToggle")
-        toggle.setCursor(Qt.PointingHandCursor)
-        toggle.clicked.connect(self.update_availability)
-        self.lay.addWidget(toggle, 0, Qt.AlignLeft)
-        self.editor_toggle = toggle
         self.editor = QFrame()
         self.editor.setObjectName("availPanel")
         v = QVBoxLayout(self.editor)
@@ -247,7 +247,7 @@ class AvailabilityPage(Page):
         opened = self.editor.isHidden()
         self.editor.setVisible(opened)
         self.editor_toggle.setText(
-            "Hide unavailable times  ▴" if opened else "Manage unavailable times  ▾"
+            "Hide Availability Form  ▴" if opened else "Manage Availability  ▾"
         )
         if opened:
             self._reload_resources()
