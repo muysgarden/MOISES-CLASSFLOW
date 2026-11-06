@@ -13,7 +13,7 @@ import logic
 from ui.availability import init_availability, unavailable
 from ui.login import LoginDialog
 from ui.main_window import MainWindow
-from ui.profile import AccountDrawer
+from ui.profile import AccountSettingsPage
 from ui.style import build_qss
 
 app=QApplication.instance() or QApplication([])
@@ -44,22 +44,22 @@ class SystemTests(unittest.TestCase):
         self.assertFalse(second.error.isHidden()); self.assertEqual(second.result(),0)
         second.password.setText('password-123'); second.login(); self.assertEqual(second.result(),1)
 
-    def test_administrator_account_drawer(self):
+    def test_full_page_administrator_settings_and_separate_logout(self):
         auth.create('Moises', 'correct-password')
         win = MainWindow(username='Moises')
         win.show(); app.processEvents()
         self.assertTrue(win.profile_trigger.isEnabled())
         QTest.mouseClick(win.profile_trigger, Qt.LeftButton)
-        self.assertTrue(win._drawer_open)
-        profile = win.drawer
-        self.assertIsInstance(profile, AccountDrawer)
+        profile = win.pages['settings']
+        self.assertIsInstance(profile, AccountSettingsPage)
         self.assertFalse(profile.isWindow())
-        self.assertEqual(win.stack.currentWidget(), win.pages['dashboard'])
-        win.drawer_animation.setCurrentTime(260)
-        self.assertEqual(profile.geometry().right(), win.centralWidget().width() - 1)
+        self.assertEqual(win.stack.currentWidget(), profile)
+        self.assertEqual(win.page_title.text(), 'Settings')
+        self.assertTrue(profile.tabs['account'].isChecked())
+        self.assertTrue(win.logout_button.isVisible())
         win.resize(1100, 680)
         app.processEvents()
-        self.assertEqual(profile.geometry().right(), win.centralWidget().width() - 1)
+        self.assertGreater(profile.width(), 700)
         profile.new_username.setText('UpdatedMoises')
         profile.username_password.setText('wrong-password')
         profile.save_username()
@@ -79,14 +79,16 @@ class SystemTests(unittest.TestCase):
         profile.save_password()
         self.assertTrue(auth.verify('UpdatedMoises', 'new-password-123'))
         self.assertFalse(auth.verify('UpdatedMoises', 'correct-password'))
-        win.close_profile()
-        win.drawer_animation.setCurrentTime(260)
-        self.assertFalse(win._drawer_open)
-        self.assertFalse(profile.isVisible())
+        profile.set_tab('security')
+        self.assertTrue(profile.tabs['security'].isChecked())
+        win.go('dashboard')
+        self.assertEqual(win.stack.currentWidget(), win.pages['dashboard'])
         win.open_profile()
         self.assertEqual(profile.new_password.text(), '')
         with patch.object(win, 'logout') as logout:
-            profile.logout_requested.emit()
+            win.logout_button.clicked.disconnect()
+            win.logout_button.clicked.connect(logout)
+            QTest.mouseClick(win.logout_button, Qt.LeftButton)
             logout.assert_called_once()
         win.close()
 

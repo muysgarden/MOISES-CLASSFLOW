@@ -1,7 +1,4 @@
-from PyQt5.QtCore import (
-    QPointF, QRect, QRectF, Qt, QTimer, QStringListModel,
-    QPropertyAnimation, QEasingCurve,
-)
+from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer, QStringListModel
 from PyQt5.QtGui import QColor, QKeySequence, QPainter, QPainterPath, QPen, QPolygonF
 from PyQt5.QtWidgets import (
     QButtonGroup, QComboBox, QCompleter, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QStackedWidget,
@@ -16,7 +13,7 @@ from ui.placeholder import PlaceholderPage
 from ui.academic import ENTITIES
 from ui.widgets import label, set_kind
 from ui.dashboard import DashboardPage
-from ui.profile import AccountDrawer
+from ui.profile import AccountSettingsPage
 
 PAGE_CLASSES = {
     "academic": "AcademicPage", "availability": "AvailabilityPage", "schedules": "SchedulesPage",
@@ -39,6 +36,7 @@ PAGE_DESCRIPTIONS = {
     "schedules": "Assign classes to rooms and time slots",
     "validation": "Review and resolve scheduling conflicts",
     "reports": "View and export academic timetables",
+    "settings": "Manage your administrator account",
 }
 
 
@@ -208,17 +206,10 @@ class MainWindow(QMainWindow):
         for key, num, title, _icon in NAV:
             self.pages[key] = self._make_page(key, num, title)
             self.stack.addWidget(self.pages[key])
+        self.pages["settings"] = AccountSettingsPage(self.username, self)
+        self.pages["settings"].username_changed.connect(self._update_account_name)
+        self.stack.addWidget(self.pages["settings"])
         self.go("dashboard")
-        self._drawer_open = False
-        self.drawer = AccountDrawer(self.username, central)
-        self.drawer.close_requested.connect(self.close_profile)
-        self.drawer.logout_requested.connect(self._logout_from_drawer)
-        self.drawer.username_changed.connect(self._update_account_name)
-        self.drawer.hide()
-        self.drawer_animation = QPropertyAnimation(self.drawer, b"geometry", self)
-        self.drawer_animation.setDuration(260)
-        self.drawer_animation.setEasingCurve(QEasingCurve.OutCubic)
-        self.drawer_animation.finished.connect(self._drawer_animation_finished)
 
     def _make_page(self, key, num, title):
         if key == "dashboard":
@@ -258,6 +249,9 @@ class MainWindow(QMainWindow):
         v.addSpacing(13)
 
         self.nav_group = QButtonGroup(self)
+        # Settings is a workspace page but not one of the six module tabs.
+        # Allow all module buttons to be unselected while it is open.
+        self.nav_group.setExclusive(False)
         self.nav_btns = {}
         for key, num, text, icon in NAV:
             if key == "dashboard":
@@ -279,7 +273,7 @@ class MainWindow(QMainWindow):
 
         self.profile_trigger = QPushButton()
         self.profile_trigger.setObjectName("profileTrigger")
-        self.profile_trigger.setToolTip("Open administrator account settings")
+        self.profile_trigger.setToolTip("Open administrator profile and settings")
         self.profile_trigger.setCursor(Qt.PointingHandCursor)
         self.profile_trigger.setFixedHeight(64)
         self.profile_trigger.clicked.connect(self.open_profile)
@@ -299,6 +293,12 @@ class MainWindow(QMainWindow):
         for child in self.profile_trigger.findChildren(QLabel):
             child.setAttribute(Qt.WA_TransparentForMouseEvents)
         v.addWidget(self.profile_trigger)
+        self.logout_button = QPushButton("↪   Log out")
+        self.logout_button.setObjectName("sidebarLogout")
+        self.logout_button.setCursor(Qt.PointingHandCursor)
+        self.logout_button.setMinimumHeight(39)
+        self.logout_button.clicked.connect(self.logout)
+        v.addWidget(self.logout_button)
         return side
 
     def _build_topbar(self):
@@ -377,12 +377,15 @@ class MainWindow(QMainWindow):
         self.refresh_current()
 
     def go(self, key, **kw):
-        self.nav_btns[key].setChecked(True)
-        self.page_title.setText(next((title for k, _, title, _ in NAV if k == key), "ClassFlow"))
+        for name, button in self.nav_btns.items():
+            button.setChecked(name == key)
+        self.page_title.setText(next((title for k, _, title, _ in NAV if k == key), "Settings" if key == "settings" else "ClassFlow"))
         self.page_context.setText(PAGE_DESCRIPTIONS[key])
         page = self.pages[key]
         self.stack.setCurrentWidget(page)
-        if kw and hasattr(page, "open"):
+        if key == "settings":
+            page.prepare(self.username)
+        elif kw and hasattr(page, "open"):
             page.open(**kw)
         else:
             page.refresh()
@@ -469,60 +472,12 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(6000, lambda: self.msg.hide() if token == self._msg_token else None)
 
     def open_profile(self):
-        if self._drawer_open:
-            self.close_profile()
-            return
-        self.drawer.prepare(self.username)
-        self.drawer_animation.stop()
-        self._drawer_open = True
-        self.drawer.setGeometry(self._drawer_rect(False))
-        self.drawer.show()
-        self.drawer.raise_()
-        self.drawer.setFocus()
-        self.drawer_animation.setStartValue(self._drawer_rect(False))
-        self.drawer_animation.setEndValue(self._drawer_rect(True))
-        self.drawer_animation.start()
-
-    def close_profile(self):
-        if not self._drawer_open:
-            return
-        self._drawer_open = False
-        self.drawer_animation.stop()
-        self.drawer_animation.setStartValue(self.drawer.geometry())
-        self.drawer_animation.setEndValue(self._drawer_rect(False))
-        self.drawer_animation.start()
-
-    def _drawer_rect(self, opened):
-        workspace = self.centralWidget()
-        x = workspace.width() - self.drawer.width() if opened else workspace.width()
-        return QRect(x, 0, self.drawer.width(), workspace.height())
-
-    def _drawer_animation_finished(self):
-        if not self._drawer_open:
-            self.drawer.hide()
+        self.go("settings")
 
     def _update_account_name(self, username):
         self.username = username
         self.profile_name.setText(self.username)
         self.profile_initial.setText(self.username[:1].upper() or "A")
-
-    def _logout_from_drawer(self):
-        self._drawer_open = False
-        self.drawer_animation.stop()
-        self.drawer.hide()
-        self.logout()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if hasattr(self, "drawer"):
-            QTimer.singleShot(0, self._sync_drawer_geometry)
-
-    def _sync_drawer_geometry(self):
-        if not hasattr(self, "drawer"):
-            return
-        if self.drawer_animation.state() == QPropertyAnimation.Running:
-            self.drawer_animation.stop()
-        self.drawer.setGeometry(self._drawer_rect(self._drawer_open))
 
     def logout(self):
         from ui.login import LoginDialog

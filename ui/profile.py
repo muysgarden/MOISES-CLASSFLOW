@@ -1,196 +1,190 @@
-"""Non-modal, sliding account drawer for ClassFlow's main workspace."""
-
+"""Full workspace account settings, styled like the ClassFlow dashboard."""
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea,
-    QVBoxLayout, QWidget,
+    QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
-
 import auth
 from ui.theme import gradient
 
 
-def label(value, object_name=None):
-    result = QLabel(value)
-    if object_name:
-        result.setObjectName(object_name)
-    return result
+def caption(value, name=None):
+    widget = QLabel(value)
+    if name:
+        widget.setObjectName(name)
+    return widget
 
 
-def password_field(placeholder):
-    field = QLineEdit()
-    field.setEchoMode(QLineEdit.Password)
-    field.setPlaceholderText(placeholder)
-    return field
+def secret(placeholder):
+    widget = QLineEdit()
+    widget.setEchoMode(QLineEdit.Password)
+    widget.setPlaceholderText(placeholder)
+    return widget
 
 
-class AccountDrawer(QFrame):
-    """Account settings that stays over the current page, without blocking it."""
-
-    close_requested = pyqtSignal()
-    logout_requested = pyqtSignal()
+class AccountSettingsPage(QWidget):
+    """A normal page with an account/security sub-navigation."""
     username_changed = pyqtSignal(str)
-
-    WIDTH = 390
 
     def __init__(self, username, parent=None):
         super().__init__(parent)
         self.username = username
-        self.setObjectName("accountDrawer")
-        self.setFixedWidth(self.WIDTH)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setObjectName("accountSettingsPage")
         self.setStyleSheet(f"""
-            QFrame#accountDrawer {{ background: white; border-left: 1px solid #DFE6F4; }}
-            QFrame#accountHeader {{ background: {gradient()}; border: none; }}
-            #accountHeader QLabel {{ color: white; background: transparent; }}
-            QLabel#accountEyebrow {{ color: #E9E8FF; font-size: 10px; font-weight: 700; }}
-            QLabel#accountTitle {{ color: white; font-size: 23px; font-weight: 700; }}
-            QLabel#accountSubtitle {{ color: #F1EEFF; font-size: 11px; }}
-            QLabel#accountAvatar {{ background: rgba(255,255,255,0.20);
-                border-radius: 23px; font-size: 21px; font-weight: 700; }}
-            QPushButton#accountClose {{ background: rgba(255,255,255,0.17);
-                color: white; border: none; border-radius: 17px;
-                font-size: 21px; padding: 0; }}
-            QPushButton#accountClose:hover {{ background: rgba(255,255,255,0.30); }}
-            QScrollArea#accountScroll, QWidget#accountContent {{ background: #F7F9FD; border: none; }}
-            QFrame#accountSection {{ background: white; border: 1px solid #E3EAF4;
-                border-radius: 13px; }}
-            QLabel#accountSectionTitle {{ color: #1A2C49; font-size: 15px; font-weight: 700; }}
-            QLabel#accountHint {{ color: #6D7C93; font-size: 11px; }}
-            QLabel#accountFieldLabel {{ color: #344761; font-size: 11px; font-weight: 650; }}
-            QLineEdit {{ background: white; border: 1px solid #DAE3F0;
-                border-radius: 9px; min-height: 29px; padding: 4px 11px; }}
+            #accountSettingsPage {{ background: #F1F5FC; }}
+            #settingsSurface {{ background: white; border: 1px solid #E4EAF3; border-radius: 14px; }}
+            #settingsMenu {{ background: white; border-right: 1px solid #E4EAF3; }}
+            QLabel#settingsHeading {{ color: #19263B; font-size: 26px; font-weight: 750; }}
+            QLabel#settingsSubtitle, QLabel#settingsHint {{ color: #708097; font-size: 12px; }}
+            QLabel#settingsSectionTitle {{ color: #19263B; font-size: 20px; font-weight: 700; }}
+            QLabel#settingsLabel {{ color: #344761; font-size: 12px; font-weight: 600; }}
+            QLabel#settingsAvatar {{ background: #E8EEFF; color: #2955CE; border-radius: 26px;
+                font-size: 22px; font-weight: 750; }}
+            QPushButton#settingsTab {{ text-align: left; background: transparent; color: #52627A;
+                border: none; border-radius: 9px; padding: 13px 15px; font-size: 13px; }}
+            QPushButton#settingsTab:hover {{ background: #F1F5FC; }}
+            QPushButton#settingsTab:checked {{ background: #EBE8FA; color: #423092; font-weight: 700; }}
+            QLineEdit {{ background: white; border: 1px solid #DCE4EE; border-radius: 8px;
+                min-height: 30px; padding: 6px 11px; color: #19263B; }}
             QLineEdit:focus {{ border: 1px solid #3479E8; }}
-            QPushButton#accountSave {{ background: #2955CE; color: white;
-                border: none; border-radius: 10px; padding: 11px 14px; font-weight: 650; }}
-            QPushButton#accountSave:hover {{ background: #3479E8; }}
-            QLabel#accountMessage {{ border-radius: 8px; padding: 8px 10px;
-                font-size: 11px; }}
-            QFrame#accountFooter {{ background: white; border-top: 1px solid #E3EAF4; }}
-            QPushButton#accountLogout {{ color: #B34943; background: #FFF2F1;
-                border: 1px solid #F5D6D4; border-radius: 9px; padding: 9px 14px; }}
-            QPushButton#accountLogout:hover {{ background: #FDE6E4; }}
+            QPushButton#settingsPrimary {{ background: {gradient()}; color: white; border: none;
+                border-radius: 9px; padding: 11px 22px; font-weight: 700; }}
+            QPushButton#settingsBack {{ background: white; color: #2955CE; border: 1px solid #BACCF6;
+                border-radius: 9px; padding: 10px 21px; }}
+            QLabel#settingsMessage {{ border-radius: 8px; padding: 10px; font-size: 12px; }}
+            QScrollArea#settingsScroll {{ background: white; border: none; }}
+            QWidget#settingsBody {{ background: white; }}
         """)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(30, 26, 30, 28)
+        outer.setSpacing(18)
+        heading = QHBoxLayout()
+        titles = QVBoxLayout()
+        titles.setSpacing(5)
+        titles.addWidget(caption("Settings", "settingsHeading"))
+        titles.addWidget(caption("Manage your ClassFlow administrator account.", "settingsSubtitle"))
+        heading.addLayout(titles)
+        heading.addStretch()
+        back = QPushButton("Back to dashboard")
+        back.setObjectName("settingsBack")
+        back.clicked.connect(self._go_back)
+        heading.addWidget(back)
+        outer.addLayout(heading)
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        surface = QFrame()
+        surface.setObjectName("settingsSurface")
+        shell = QHBoxLayout(surface)
+        shell.setContentsMargins(0, 0, 0, 0)
+        shell.setSpacing(0)
+        menu = QFrame()
+        menu.setObjectName("settingsMenu")
+        menu.setFixedWidth(205)
+        ml = QVBoxLayout(menu)
+        ml.setContentsMargins(14, 24, 14, 20)
+        ml.setSpacing(8)
+        self.tabs = {}
+        for key, title in (("account", "◉   My account"), ("security", "◇   Security")):
+            button = QPushButton(title)
+            button.setObjectName("settingsTab")
+            button.setCheckable(True)
+            button.clicked.connect(lambda _=False, name=key: self.set_tab(name))
+            ml.addWidget(button)
+            self.tabs[key] = button
+        ml.addStretch()
+        shell.addWidget(menu)
+        self.sections = QStackedWidget()
+        self.sections.addWidget(self._account_section())
+        self.sections.addWidget(self._security_section())
+        shell.addWidget(self.sections, 1)
+        outer.addWidget(surface, 1)
+        self.set_tab("account")
 
-        header = QFrame()
-        header.setObjectName("accountHeader")
-        hv = QVBoxLayout(header)
-        hv.setContentsMargins(22, 19, 20, 22)
-        hv.setSpacing(14)
-        top = QHBoxLayout()
-        top.addWidget(label("CLASSFLOW / ACCOUNT", "accountEyebrow"))
-        top.addStretch()
-        close = QPushButton("×")
-        close.setObjectName("accountClose")
-        close.setFixedSize(34, 34)
-        close.setToolTip("Close account settings")
-        close.clicked.connect(self.close_requested.emit)
-        top.addWidget(close)
-        hv.addLayout(top)
-        self.title = label("Account settings", "accountTitle")
-        hv.addWidget(self.title)
-        profile = QHBoxLayout()
-        profile.setSpacing(12)
-        self.avatar = label(username[:1].upper() or "A", "accountAvatar")
-        self.avatar.setFixedSize(46, 46)
-        self.avatar.setAlignment(Qt.AlignCenter)
-        profile.addWidget(self.avatar)
-        identity = QVBoxLayout()
-        identity.setSpacing(3)
-        self.account_label = label(username, "accountSubtitle")
-        identity.addWidget(self.account_label)
-        identity.addWidget(label("Administrator · Local account", "accountSubtitle"))
-        profile.addLayout(identity, 1)
-        hv.addLayout(profile)
-        root.addWidget(header)
+    def _go_back(self):
+        window = self.window()
+        if hasattr(window, "go"):
+            window.go("dashboard")
 
+    def _section(self, heading, description):
         scroll = QScrollArea()
-        scroll.setObjectName("accountScroll")
+        scroll.setObjectName("settingsScroll")
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        content = QWidget()
-        content.setObjectName("accountContent")
-        cv = QVBoxLayout(content)
-        cv.setContentsMargins(20, 20, 20, 20)
-        cv.setSpacing(16)
-        cv.addWidget(self._username_section())
-        cv.addWidget(self._security_section())
-        cv.addStretch()
-        scroll.setWidget(content)
-        root.addWidget(scroll, 1)
-
-        footer = QFrame()
-        footer.setObjectName("accountFooter")
-        foot = QHBoxLayout(footer)
-        foot.setContentsMargins(20, 13, 20, 13)
-        logout = QPushButton("Log out")
-        logout.setObjectName("accountLogout")
-        logout.clicked.connect(self.logout_requested.emit)
-        foot.addWidget(logout)
-        foot.addStretch()
-        foot.addWidget(label("Stored on this device", "accountHint"))
-        root.addWidget(footer)
-
-    def _section(self, title, description):
-        frame = QFrame()
-        frame.setObjectName("accountSection")
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(17, 18, 17, 18)
-        layout.setSpacing(9)
-        layout.addWidget(label(title, "accountSectionTitle"))
-        description_label = label(description, "accountHint")
-        description_label.setWordWrap(True)
-        layout.addWidget(description_label)
-        layout.addSpacing(4)
-        return frame, layout
+        body = QWidget()
+        body.setObjectName("settingsBody")
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(34, 30, 34, 32)
+        layout.setSpacing(12)
+        layout.addWidget(caption(heading, "settingsSectionTitle"))
+        layout.addWidget(caption(description, "settingsHint"))
+        divider = QFrame()
+        divider.setFrameShape(QFrame.HLine)
+        divider.setStyleSheet("color: #E4EAF3; margin: 12px 0;")
+        layout.addWidget(divider)
+        scroll.setWidget(body)
+        return scroll, layout
 
     @staticmethod
-    def _field(layout, title, widget):
-        layout.addWidget(label(title, "accountFieldLabel"))
-        layout.addWidget(widget)
+    def _field(layout, title, field):
+        layout.addWidget(caption(title, "settingsLabel"))
+        layout.addWidget(field)
+        layout.addSpacing(9)
 
-    def _username_section(self):
-        frame, layout = self._section("Profile details", "Update the name used to sign in.")
+    def _account_section(self):
+        scroll, layout = self._section("Account", "Your sign-in details and account information.")
+        identity = QHBoxLayout()
+        self.avatar = caption(self.username[:1].upper() or "A", "settingsAvatar")
+        self.avatar.setAlignment(Qt.AlignCenter)
+        self.avatar.setFixedSize(52, 52)
+        identity.addWidget(self.avatar)
+        names = QVBoxLayout()
+        self.account_label = caption(self.username, "settingsSectionTitle")
+        names.addWidget(self.account_label)
+        names.addWidget(caption("Administrator · Local account", "settingsHint"))
+        identity.addLayout(names)
+        identity.addStretch()
+        layout.addLayout(identity)
+        layout.addSpacing(18)
         self.new_username = QLineEdit(self.username)
         self.new_username.setMaxLength(80)
         self._field(layout, "Username", self.new_username)
-        self.username_password = password_field("Confirm your current password")
+        layout.addWidget(caption("Confirm with your current password to save changes.", "settingsHint"))
+        self.username_password = secret("Current password")
         self._field(layout, "Current password", self.username_password)
-        save = QPushButton("Save username")
-        save.setObjectName("accountSave")
+        save = QPushButton("Save changes")
+        save.setObjectName("settingsPrimary")
         save.clicked.connect(self.save_username)
-        layout.addWidget(save)
-        self.username_message = label("", "accountMessage")
+        layout.addWidget(save, 0, Qt.AlignRight)
+        self.username_message = caption("", "settingsMessage")
         self.username_message.setWordWrap(True)
         self.username_message.hide()
         layout.addWidget(self.username_message)
-        return frame
+        layout.addStretch()
+        return scroll
 
     def _security_section(self):
-        frame, layout = self._section("Password & security", "Use at least 8 characters for your new password.")
-        self.current_password = password_field("Current password")
+        scroll, layout = self._section("Security", "Change your password to keep your account secure.")
+        self.current_password = secret("Current password")
         self._field(layout, "Current password", self.current_password)
-        self.new_password = password_field("New password")
+        self.new_password = secret("At least 8 characters")
         self._field(layout, "New password", self.new_password)
-        self.confirm_password = password_field("Confirm new password")
+        self.confirm_password = secret("Confirm new password")
         self._field(layout, "Confirm new password", self.confirm_password)
         save = QPushButton("Update password")
-        save.setObjectName("accountSave")
+        save.setObjectName("settingsPrimary")
         save.clicked.connect(self.save_password)
-        layout.addWidget(save)
-        self.password_message = label("", "accountMessage")
+        layout.addWidget(save, 0, Qt.AlignRight)
+        self.password_message = caption("", "settingsMessage")
         self.password_message.setWordWrap(True)
         self.password_message.hide()
         layout.addWidget(self.password_message)
-        return frame
+        layout.addStretch()
+        return scroll
+
+    def set_tab(self, tab):
+        for key, button in self.tabs.items():
+            button.setChecked(key == tab)
+        self.sections.setCurrentIndex(0 if tab == "account" else 1)
 
     def prepare(self, username):
-        """Clear sensitive input whenever the user opens the drawer."""
         self.username = username
         self.new_username.setText(username)
         self.account_label.setText(username)
@@ -200,20 +194,19 @@ class AccountDrawer(QFrame):
             field.clear()
         self.username_message.hide()
         self.password_message.hide()
+        self.set_tab("account")
 
-    def feedback(self, target, message, success):
+    @staticmethod
+    def feedback(target, message, success):
         target.setText(message)
-        target.setStyleSheet(
-            "color: #216449; background: #E8F6EE;" if success
-            else "color: #B34943; background: #FFF0EE;"
-        )
+        target.setStyleSheet("color: #216449; background: #E8F6EE;" if success
+                             else "color: #B34943; background: #FFF0EE;")
         target.show()
 
     def save_username(self):
         try:
-            updated = auth.change_username(
-                self.username, self.new_username.text(), self.username_password.text()
-            )
+            updated = auth.change_username(self.username, self.new_username.text(),
+                                           self.username_password.text())
         except ValueError as exc:
             self.feedback(self.username_message, str(exc), False)
             return
@@ -229,19 +222,11 @@ class AccountDrawer(QFrame):
             self.feedback(self.password_message, "New passwords do not match.", False)
             return
         try:
-            auth.change_password(
-                self.username, self.current_password.text(), self.new_password.text()
-            )
+            auth.change_password(self.username, self.current_password.text(),
+                                 self.new_password.text())
         except ValueError as exc:
             self.feedback(self.password_message, str(exc), False)
             return
         for field in (self.current_password, self.new_password, self.confirm_password):
             field.clear()
         self.feedback(self.password_message, "Password updated successfully.", True)
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
-            self.close_requested.emit()
-            event.accept()
-        else:
-            super().keyPressEvent(event)

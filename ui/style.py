@@ -346,6 +346,12 @@ QPushButton#profileTrigger:hover { background: #EEF3FF; border-color: #C8D7F8; }
 #profileChevron { color: $muted; font-size: 19px; }
 #userName { color: $ink; font-size: 12px; font-weight: 700; }
 #avatarTop { background: $gradient; color: white; border-radius: 17px; font-size: 15px; font-weight: 700; }
+QPushButton#sidebarLogout {
+    background: transparent; color: #A84C52; border: none;
+    border-radius: 9px; text-align: left; padding-left: 18px;
+    font-size: 12px; font-weight: 600;
+}
+QPushButton#sidebarLogout:hover { background: #FFF0F0; }
 
 /* Search is real and uses a database-backed popup. */
 #topbar { background: $surface; border-bottom: 1px solid $border; }
