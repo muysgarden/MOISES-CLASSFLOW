@@ -60,6 +60,10 @@ The existing seven Academic Records tabs remain intact. Records occupy the full 
 
 New text and numeric fields start blank, and required numeric values are validated before saving. Program, room and other selection fields support typing with matching suggestions; unrecognized values are rejected. Edits update the existing SQLite record, while Delete removes records after confirmation if no dependent schedules or other references require them. A clear explanation names the dependent records when deletion is blocked. No existing data is silently discarded or reset.
 
+### Demo data cleanup
+
+The optional first-run demo dataset now tags the records it creates. Under **Settings → Data management**, an administrator can review the number of tagged demo records and, after explicit confirmation, remove only those original records. This is transactional: edited samples and references from non-demo records block cleanup and leave the database unchanged. Hand-entered data is never identified as sample data merely because its name resembles an example. Databases seeded in older versions have no trustworthy tags, so those historical records are *not* eligible for automatic cleanup; use normal record-by-record controls to review them.
+
 ## Modules
 
 1. **Academic Data Management** — add, edit, delete, search, and filter programs, sections, subjects, faculty, classrooms, academic terms, and school periods. In-use records are protected from deletion.

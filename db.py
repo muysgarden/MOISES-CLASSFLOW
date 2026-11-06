@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import json
 import sys
 from pathlib import Path
 
@@ -42,7 +43,98 @@ CREATE TABLE IF NOT EXISTS schedules(
     room_id INTEGER NOT NULL REFERENCES classrooms(id),
     day TEXT NOT NULL, start_min INTEGER NOT NULL, end_min INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_sched_term_day ON schedules(term_id, day);
+CREATE TABLE IF NOT EXISTS sample_records(
+    table_name TEXT NOT NULL, record_id INTEGER NOT NULL, snapshot TEXT NOT NULL,
+    PRIMARY KEY(table_name, record_id));
+CREATE TABLE IF NOT EXISTS sample_subject_links(
+    subject_id INTEGER NOT NULL, program_id INTEGER NOT NULL,
+    PRIMARY KEY(subject_id, program_id));
 """
+
+SAMPLE_TABLES = (
+    "terms", "periods", "programs", "subjects", "sections",
+    "faculty", "classrooms", "schedules",
+)
+
+
+def _snapshot(record):
+    return json.dumps(list(tuple(record)), ensure_ascii=False)
+
+
+def sample_count():
+    """Count still-existing, explicitly marked sample rows (never infer from names)."""
+    return sum(conn.execute(
+        f"SELECT COUNT(*) FROM sample_records m JOIN {table} t ON t.id=m.record_id "
+        "WHERE m.table_name=?", (table,)
+    ).fetchone()[0] for table in SAMPLE_TABLES)
+
+
+def clear_sample_data():
+    """Remove only original tagged samples, atomically; leave other records alone.
+
+    If samples were edited, or new records reference them, cleanup refuses
+    rather than making irreversible guesses about ownership.
+    """
+    if not sample_count():
+        return 0
+    try:
+        with conn:
+            tagged = {}
+            for table in SAMPLE_TABLES:
+                tagged[table] = []
+                for mark in conn.execute(
+                    "SELECT record_id, snapshot FROM sample_records WHERE table_name=?",
+                    (table,)
+                ).fetchall():
+                    record = conn.execute(
+                        f"SELECT * FROM {table} WHERE id=?", (mark["record_id"],)
+                    ).fetchone()
+                    if record is None:
+                        continue
+                    if _snapshot(record) != mark["snapshot"]:
+                        raise ValueError(
+                            f"Sample {table} record #{mark['record_id']} was edited. "
+                            "Review it manually before clearing samples."
+                        )
+                    tagged[table].append(mark["record_id"])
+            sample_links = {
+                (r["subject_id"], r["program_id"]) for r in conn.execute(
+                    "SELECT subject_id, program_id FROM sample_subject_links"
+                )
+            }
+            for sid in tagged["subjects"]:
+                links = {
+                    (r["subject_id"], r["program_id"]) for r in conn.execute(
+                        "SELECT subject_id, program_id FROM subject_programs WHERE subject_id=?",
+                        (sid,)
+                    )
+                }
+                if not links <= sample_links:
+                    raise ValueError(
+                        "A demo subject has new program assignments. "
+                        "Review those relationships before clearing samples."
+                    )
+            for sid, pid in sample_links:
+                if sid in tagged["subjects"]:
+                    conn.execute(
+                        "DELETE FROM subject_programs WHERE subject_id=? AND program_id=?",
+                        (sid, pid)
+                    )
+            removed = 0
+            for table in ("schedules", "subjects", "sections", "faculty",
+                          "classrooms", "programs", "periods", "terms"):
+                for rid in tagged[table]:
+                    removed += conn.execute(
+                        f"DELETE FROM {table} WHERE id=?", (rid,)
+                    ).rowcount
+            conn.execute("DELETE FROM sample_subject_links")
+            conn.execute("DELETE FROM sample_records")
+            return removed
+    except sqlite3.IntegrityError as exc:
+        raise ValueError(
+            "Some sample records are now used by other data. "
+            "Review the linked schedules, subjects, or sections first; no records were removed."
+        ) from exc
 
 conn = None
 
@@ -113,6 +205,13 @@ def seed(reset=False):
             c.execute(f"DELETE FROM {t}")
     if not is_empty():
         return False
+    original_ids = {
+        table: {r["id"] for r in rows(f"SELECT id FROM {table}")}
+        for table in SAMPLE_TABLES
+    }
+    original_links = {
+        tuple(r) for r in rows("SELECT subject_id, program_id FROM subject_programs")
+    }
 
     def hm(h, m=0):
         return h * 60 + m
@@ -196,5 +295,15 @@ def seed(reset=False):
     c.execute("""UPDATE subjects SET room_type=(
                      SELECT room_type FROM classrooms WHERE classrooms.id=subjects.preferred_room_id)
                  WHERE preferred_room_id IS NOT NULL""")
+    for table in SAMPLE_TABLES:
+        for record in rows(f"SELECT * FROM {table}"):
+            if record["id"] not in original_ids[table]:
+                c.execute(
+                    "INSERT OR REPLACE INTO sample_records(table_name,record_id,snapshot) VALUES(?,?,?)",
+                    (table, record["id"], _snapshot(record))
+                )
+    for link in rows("SELECT subject_id, program_id FROM subject_programs"):
+        if tuple(link) not in original_links:
+            c.execute("INSERT OR IGNORE INTO sample_subject_links VALUES(?,?)", tuple(link))
     c.commit()
     return True

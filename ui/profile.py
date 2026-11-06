@@ -2,9 +2,10 @@
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
+    QMessageBox, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 import auth
+import db
 from ui.theme import gradient
 
 
@@ -51,6 +52,9 @@ class AccountSettingsPage(QWidget):
                 border-radius: 9px; padding: 11px 22px; font-weight: 700; }}
             QPushButton#settingsBack {{ background: white; color: #2955CE; border: 1px solid #BACCF6;
                 border-radius: 9px; padding: 10px 21px; }}
+            QPushButton#settingsDanger {{ background: #FFF1F0; color: #B33B3B;
+                border: 1px solid #F0C6C3; border-radius: 9px; padding: 11px 22px; font-weight: 700; }}
+            QPushButton#settingsDanger:disabled {{ color: #9FA8B7; background: #F4F6F9; border-color: #E4EAF3; }}
             QLabel#settingsMessage {{ border-radius: 8px; padding: 10px; font-size: 12px; }}
             QScrollArea#settingsScroll {{ background: white; border: none; }}
             QWidget#settingsBody {{ background: white; }}
@@ -78,12 +82,14 @@ class AccountSettingsPage(QWidget):
         shell.setSpacing(0)
         menu = QFrame()
         menu.setObjectName("settingsMenu")
-        menu.setFixedWidth(205)
+        menu.setFixedWidth(232)
         ml = QVBoxLayout(menu)
         ml.setContentsMargins(14, 24, 14, 20)
         ml.setSpacing(8)
         self.tabs = {}
-        for key, title in (("account", "◉   My account"), ("security", "◇   Security")):
+        for key, title in (("account", "◉   My account"),
+                           ("security", "◇   Security"),
+                           ("data", "▤   Data management")):
             button = QPushButton(title)
             button.setObjectName("settingsTab")
             button.setCheckable(True)
@@ -95,6 +101,7 @@ class AccountSettingsPage(QWidget):
         self.sections = QStackedWidget()
         self.sections.addWidget(self._account_section())
         self.sections.addWidget(self._security_section())
+        self.sections.addWidget(self._data_section())
         shell.addWidget(self.sections, 1)
         outer.addWidget(surface, 1)
         self.set_tab("account")
@@ -179,10 +186,69 @@ class AccountSettingsPage(QWidget):
         layout.addStretch()
         return scroll
 
+    def _data_section(self):
+        scroll, layout = self._section(
+            "Data management", "Remove demonstration records when testing is complete."
+        )
+        self.demo_count = caption("", "settingsSectionTitle")
+        layout.addWidget(self.demo_count)
+        warning = caption(
+            "Only records explicitly marked when ClassFlow created its demo dataset "
+            "are eligible. Existing records from older versions are not assumed to be samples. "
+            "If you've edited a sample or connected real records to it, cleanup will stop "
+            "without deleting anything.",
+            "settingsHint",
+        )
+        warning.setWordWrap(True)
+        layout.addWidget(warning)
+        layout.addSpacing(14)
+        self.clear_samples_button = QPushButton("Clear tracked sample data")
+        self.clear_samples_button.setObjectName("settingsDanger")
+        self.clear_samples_button.clicked.connect(self.clear_samples)
+        layout.addWidget(self.clear_samples_button, 0, Qt.AlignLeft)
+        self.data_message = caption("", "settingsMessage")
+        self.data_message.setWordWrap(True)
+        self.data_message.hide()
+        layout.addWidget(self.data_message)
+        layout.addStretch()
+        return scroll
+
+    def refresh_samples(self):
+        count = db.sample_count()
+        self.demo_count.setText(f"{count} tracked demonstration records")
+        self.clear_samples_button.setEnabled(count > 0)
+
+    def clear_samples(self):
+        count = db.sample_count()
+        if not count:
+            self.refresh_samples()
+            return
+        answer = QMessageBox.question(
+            self, "Remove demonstration records?",
+            f"Remove {count} tagged demo records and their original subject-program links?\n"
+            "This cannot be undone. Your manually entered records will be protected; "
+            "cleanup will stop if any dependencies are unsafe.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            removed = db.clear_sample_data()
+        except ValueError as exc:
+            self.feedback(self.data_message, str(exc), False)
+            return
+        self.feedback(self.data_message, f"Removed {removed} tagged demo records.", True)
+        self.refresh_samples()
+        window = self.window()
+        if hasattr(window, "reload_terms"):
+            window.reload_terms()
+
     def set_tab(self, tab):
         for key, button in self.tabs.items():
             button.setChecked(key == tab)
-        self.sections.setCurrentIndex(0 if tab == "account" else 1)
+        self.sections.setCurrentIndex({"account": 0, "security": 1, "data": 2}[tab])
+        if tab == "data":
+            self.refresh_samples()
 
     def prepare(self, username):
         self.username = username

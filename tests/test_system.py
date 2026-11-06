@@ -233,6 +233,56 @@ class SystemTests(unittest.TestCase):
         self.assertIn('linked to', win.msg.text())
         win.close()
 
+    def test_sample_cleanup_keeps_real_records(self):
+        count = db.sample_count()
+        self.assertGreater(count, 0)
+        with db.conn:
+            db.conn.execute(
+                "INSERT INTO faculty(name,department,max_units) VALUES('Real Faculty','CCS',18)"
+            )
+        removed = db.clear_sample_data()
+        self.assertEqual(removed, count)
+        self.assertEqual(db.sample_count(), 0)
+        self.assertIsNotNone(db.row("SELECT id FROM faculty WHERE name='Real Faculty'"))
+        self.assertEqual(db.row("SELECT COUNT(*) FROM schedules")[0], 0)
+        self.assertEqual(db.row("SELECT COUNT(*) FROM subjects")[0], 0)
+
+    def test_sample_cleanup_refuses_edits_and_new_dependencies(self):
+        subject = db.row("SELECT id FROM subjects LIMIT 1")["id"]
+        with db.conn:
+            db.conn.execute("UPDATE subjects SET title='Our Real Curriculum' WHERE id=?", (subject,))
+        before = db.row("SELECT COUNT(*) FROM subjects")[0]
+        with self.assertRaisesRegex(ValueError, 'edited'):
+            db.clear_sample_data()
+        self.assertEqual(db.row("SELECT COUNT(*) FROM subjects")[0], before)
+
+        db.conn.close()
+        db.init(':memory:'); db.seed(); auth.init(); init_availability()
+        original = db.sample_count()
+        with db.conn:
+            program = db.row("SELECT id FROM programs WHERE code='BSCS'")["id"]
+            db.conn.execute("INSERT INTO sections(name,program_id,enrollment) VALUES('Real 5A',?,30)",
+                            (program,))
+        with self.assertRaisesRegex(ValueError, 'linked'):
+            db.clear_sample_data()
+        self.assertEqual(db.sample_count(), original)
+        self.assertIsNotNone(db.row("SELECT id FROM sections WHERE name='Real 5A'"))
+
+    def test_sample_tags_survive_reopening_database(self):
+        db.conn.close()
+        with tempfile.TemporaryDirectory() as directory:
+            database_file = os.path.join(directory, 'sample-test.db')
+            db.init(database_file)
+            db.seed()
+            original = db.sample_count()
+            db.conn.close()
+            db.init(database_file)
+            self.assertEqual(db.sample_count(), original)
+            self.assertEqual(db.clear_sample_data(), original)
+            self.assertEqual(db.sample_count(), 0)
+            db.conn.close()
+        db.init(':memory:')
+
     def test_exports_and_auth_disk_persistence(self):
         win=MainWindow(); reports=win.pages['reports']; reports.refresh()
         with tempfile.TemporaryDirectory() as directory:
