@@ -1,4 +1,7 @@
-from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer, QStringListModel
+from PyQt5.QtCore import (
+    QPointF, QRect, QRectF, Qt, QTimer, QStringListModel,
+    QPropertyAnimation, QEasingCurve,
+)
 from PyQt5.QtGui import QColor, QKeySequence, QPainter, QPainterPath, QPen, QPolygonF
 from PyQt5.QtWidgets import (
     QButtonGroup, QComboBox, QCompleter, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QStackedWidget,
@@ -13,7 +16,7 @@ from ui.placeholder import PlaceholderPage
 from ui.academic import ENTITIES
 from ui.widgets import label, set_kind
 from ui.dashboard import DashboardPage
-from ui.profile import ProfileDialog
+from ui.profile import AccountDrawer
 
 PAGE_CLASSES = {
     "academic": "AcademicPage", "availability": "AvailabilityPage", "schedules": "SchedulesPage",
@@ -206,6 +209,16 @@ class MainWindow(QMainWindow):
             self.pages[key] = self._make_page(key, num, title)
             self.stack.addWidget(self.pages[key])
         self.go("dashboard")
+        self._drawer_open = False
+        self.drawer = AccountDrawer(self.username, central)
+        self.drawer.close_requested.connect(self.close_profile)
+        self.drawer.logout_requested.connect(self._logout_from_drawer)
+        self.drawer.username_changed.connect(self._update_account_name)
+        self.drawer.hide()
+        self.drawer_animation = QPropertyAnimation(self.drawer, b"geometry", self)
+        self.drawer_animation.setDuration(260)
+        self.drawer_animation.setEasingCurve(QEasingCurve.OutCubic)
+        self.drawer_animation.finished.connect(self._drawer_animation_finished)
 
     def _make_page(self, key, num, title):
         if key == "dashboard":
@@ -456,13 +469,60 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(6000, lambda: self.msg.hide() if token == self._msg_token else None)
 
     def open_profile(self):
-        dialog = ProfileDialog(self.username, self)
-        dialog.exec_()
-        self.username = dialog.username
+        if self._drawer_open:
+            self.close_profile()
+            return
+        self.drawer.prepare(self.username)
+        self.drawer_animation.stop()
+        self._drawer_open = True
+        self.drawer.setGeometry(self._drawer_rect(False))
+        self.drawer.show()
+        self.drawer.raise_()
+        self.drawer.setFocus()
+        self.drawer_animation.setStartValue(self._drawer_rect(False))
+        self.drawer_animation.setEndValue(self._drawer_rect(True))
+        self.drawer_animation.start()
+
+    def close_profile(self):
+        if not self._drawer_open:
+            return
+        self._drawer_open = False
+        self.drawer_animation.stop()
+        self.drawer_animation.setStartValue(self.drawer.geometry())
+        self.drawer_animation.setEndValue(self._drawer_rect(False))
+        self.drawer_animation.start()
+
+    def _drawer_rect(self, opened):
+        workspace = self.centralWidget()
+        x = workspace.width() - self.drawer.width() if opened else workspace.width()
+        return QRect(x, 0, self.drawer.width(), workspace.height())
+
+    def _drawer_animation_finished(self):
+        if not self._drawer_open:
+            self.drawer.hide()
+
+    def _update_account_name(self, username):
+        self.username = username
         self.profile_name.setText(self.username)
         self.profile_initial.setText(self.username[:1].upper() or "A")
-        if dialog.sign_out_requested:
-            self.logout()
+
+    def _logout_from_drawer(self):
+        self._drawer_open = False
+        self.drawer_animation.stop()
+        self.drawer.hide()
+        self.logout()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "drawer"):
+            QTimer.singleShot(0, self._sync_drawer_geometry)
+
+    def _sync_drawer_geometry(self):
+        if not hasattr(self, "drawer"):
+            return
+        if self.drawer_animation.state() == QPropertyAnimation.Running:
+            self.drawer_animation.stop()
+        self.drawer.setGeometry(self._drawer_rect(self._drawer_open))
 
     def logout(self):
         from ui.login import LoginDialog
@@ -470,9 +530,7 @@ class MainWindow(QMainWindow):
         self.hide()
         dialog = LoginDialog()
         if dialog.exec_() == QDialog.Accepted:
-            self.username = dialog.username.text().strip()
-            self.profile_name.setText(self.username)
-            self.profile_initial.setText(self.username[:1].upper() or "A")
+            self._update_account_name(dialog.username.text().strip())
             self.show()
         else:
             self.close()
