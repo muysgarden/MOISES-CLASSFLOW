@@ -40,7 +40,19 @@ Place your own files in `assets/`:
 | `building.jpg` | Left panel of the login card |
 | `logo.png` | College logo over the left panel |
 
-The login uses ClassFlow branding, a dark split card, username/password fields, password visibility toggle, inline login errors, and the reference's purple login button. Neutral placeholders appear until your images are supplied. The five application screens follow the PDF's navy sidebar, teal accents, pale workspace, cards, tabs, forms, tables, calendars, and report layout. Native font rendering and window size can affect the final appearance.
+The login uses ClassFlow branding, a dark split card, username/password fields, password visibility toggle, inline login errors, and a blue-purple login button. Neutral placeholders appear until your images are supplied.
+
+## Phase 1: Dashboard and navigation
+
+After login, ClassFlow opens a new dashboard inspired by the supplied clean academic reference: a white sidebar, soft blue-gray workspace, blue-purple gradients, warm orange accents, spacious statistics and quick actions. Its six statistic cards, schedule summary and coverage bar use **actual data from the selected term**. "Saved schedules" shows assignments in recent database-ID order; it is not a timestamped activity log.
+
+Use the global search box in the top bar, or press **Ctrl+K** to focus it. As you type, ClassFlow suggests matching subjects, faculty, classrooms, sections, programs, terms, periods and saved schedules from SQLite. Click a suggestion to open that specific record for editing or hit Enter to open the first match. If no record matches, a clear message appears.
+
+The active academic term selector stays in the top bar. The sidebar links to Dashboard and the five original modules, with a visible scheduling-coverage indicator and account/logout area. All existing module operations are preserved for the later, module-by-module usability work.
+
+To customize the appearance, edit the color values in `ui/theme.py`. Shared app-shell and component styling is appended in `PHASE1_QSS` inside `ui/style.py`; dashboard layout and content live in `ui/dashboard.py`. The login photo positions and logo slot have not changed.
+
+The login remains intentionally dark while sharing the same gradient accent and typography as the new light dashboard.
 
 ## Modules
 
@@ -68,7 +80,7 @@ Tests use temporary in-memory databases and Qt's offscreen rendering. They exerc
 - `auth.py` — local account creation and password verification.
 - `db.py` — SQLite schema and optional sample records, retained from the supplied project.
 - `logic.py` — scheduling, validation, loads, and progress.
-- `ui/` — login and five working module screens.
+- `ui/` — login, dashboard, shared theme, and five working module screens.
 - `tests/test_system.py` — functional and UI checks.
 
 The uploaded PDF is a visual reference. Its illustrative counts and percentages are replaced by computed values from the database.

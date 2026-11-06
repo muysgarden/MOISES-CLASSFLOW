@@ -1,8 +1,8 @@
-from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer
-from PyQt5.QtGui import QColor, QPainter, QPainterPath, QPen, QPolygonF
+from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer, QStringListModel
+from PyQt5.QtGui import QColor, QKeySequence, QPainter, QPainterPath, QPen, QPolygonF
 from PyQt5.QtWidgets import (
-    QButtonGroup, QComboBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QStackedWidget,
-    QVBoxLayout, QWidget, QFrame,
+    QButtonGroup, QComboBox, QCompleter, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QStackedWidget,
+    QVBoxLayout, QWidget, QFrame, QSizePolicy, QShortcut,
 )
 
 import db
@@ -12,6 +12,8 @@ import importlib
 from ui.placeholder import PlaceholderPage
 from ui.academic import ENTITIES
 from ui.widgets import Bar, label, set_kind
+from ui.dashboard import DashboardPage
+from ui.theme import COLORS
 
 PAGE_CLASSES = {
     "academic": "AcademicPage", "availability": "AvailabilityPage", "schedules": "SchedulesPage",
@@ -19,12 +21,22 @@ PAGE_CLASSES = {
 }
 
 NAV = [
-    ("academic", "01", "Academic Data Management", "book"),
-    ("availability", "02", "Faculty and Room Availability", "clock"),
-    ("schedules", "03", "Schedule Management", "calendar"),
-    ("validation", "04", "Conflict Detection and Validation", "check"),
-    ("reports", "05", "Timetable Generation and Reports", "document"),
+    ("dashboard", "", "Dashboard", "home"),
+    ("academic", "01", "Academic Records", "book"),
+    ("availability", "02", "Availability", "clock"),
+    ("schedules", "03", "Class Schedules", "calendar"),
+    ("validation", "04", "Conflict Checks", "check"),
+    ("reports", "05", "Reports & Timetables", "document"),
 ]
+
+PAGE_DESCRIPTIONS = {
+    "dashboard": "Your scheduling workspace at a glance",
+    "academic": "Manage the school's academic records",
+    "availability": "Faculty and classroom availability",
+    "schedules": "Assign classes to rooms and time slots",
+    "validation": "Review and resolve scheduling conflicts",
+    "reports": "View and export academic timetables",
+}
 
 
 class SidebarIcon(QWidget):
@@ -43,12 +55,20 @@ class SidebarIcon(QWidget):
     def paintEvent(self, _event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        color = QColor("#ffffff" if self.active else "#9aacca")
+        color = QColor("#ffffff" if self.active else "#5F6D83")
         pen = QPen(color, 1.45, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
 
-        if self.kind == "book":
+        if self.kind == "home":
+            roof = QPainterPath()
+            roof.moveTo(2.5, 8)
+            roof.lineTo(9, 2.8)
+            roof.lineTo(15.5, 8)
+            painter.drawPath(roof)
+            painter.drawRoundedRect(QRectF(4.6, 7.5, 8.8, 8), 1.2, 1.2)
+            painter.drawLine(QPointF(9, 15), QPointF(9, 11))
+        elif self.kind == "book":
             left = QPainterPath()
             left.moveTo(8.5, 4)
             left.cubicTo(6, 2.7, 3.6, 3.1, 2.5, 4.2)
@@ -124,43 +144,47 @@ class NavButton(QPushButton):
         self.setObjectName("nav")
         self.setCheckable(True)
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(58)
+        self.setMinimumHeight(48)
         h = QHBoxLayout(self)
-        h.setContentsMargins(8, 6, 9, 6)
-        h.setSpacing(8)
-        n = label(num, "navNum")
-        n.setFixedWidth(20)
+        h.setContentsMargins(15, 5, 11, 5)
+        h.setSpacing(12)
         self.icon = SidebarIcon(icon)
-        t = label(text, wrap=True)
-        self.chevron = label("›", "navChevron", align=Qt.AlignCenter)
-        self.chevron.setFixedWidth(12)
-        for w in (n, self.icon, t, self.chevron):
+        t = label(text)
+        self.active_label = label("Active", "activeTag")
+        self.active_label.setVisible(False)
+        for w in (self.icon, t, self.active_label):
             w.setAttribute(Qt.WA_TransparentForMouseEvents)
         self._text = t
         self.toggled.connect(self._restyle)
         self._restyle(False)
-        h.addWidget(n)
         h.addWidget(self.icon)
         h.addWidget(t, 1)
-        h.addWidget(self.chevron)
+        h.addWidget(self.active_label)
 
     def _restyle(self, checked):
         f = self._text.font()
         f.setBold(bool(checked))
         self._text.setFont(f)
+        # In Qt, descendant labels inside a checkable QPushButton can retain
+        # the checked-state QSS palette even after their parent is unchecked.
+        self._text.setStyleSheet("color: #FFFFFF;" if checked else "color: #52627A;")
         self.icon.set_active(checked)
-        self.chevron.setVisible(checked)
+        # Keep navigation labels fully visible; the badge only fits the short
+        # Dashboard entry. Other modules are highlighted by the gradient.
+        self.active_label.setVisible(checked and self._text.text() == "Dashboard")
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, username="Administrator"):
         super().__init__()
+        self.username = username
         self.setWindowTitle("ClassFlow — College of Computer Studies Scheduler")
         self.resize(1440, 860)
-        self.setMinimumSize(1100, 640)
+        self.setMinimumSize(1100, 680)
         self._msg_token = 0
 
         central = QWidget()
+        central.setObjectName("workspace")
         root = QHBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
@@ -187,9 +211,11 @@ class MainWindow(QMainWindow):
         for key, num, title, _icon in NAV:
             self.pages[key] = self._make_page(key, num, title)
             self.stack.addWidget(self.pages[key])
-        self.go("academic")
+        self.go("dashboard")
 
     def _make_page(self, key, num, title):
+        if key == "dashboard":
+            return DashboardPage(self)
         try:
             module = importlib.import_module(f"ui.{key}")
         except ModuleNotFoundError as e:
@@ -201,20 +227,20 @@ class MainWindow(QMainWindow):
     def _build_sidebar(self):
         side = QFrame()
         side.setObjectName("sidebar")
-        side.setFixedWidth(214)
+        side.setFixedWidth(252)
         v = QVBoxLayout(side)
-        v.setContentsMargins(14, 30, 12, 14)
-        v.setSpacing(7)
+        v.setContentsMargins(15, 22, 15, 16)
+        v.setSpacing(9)
 
         brand = QHBoxLayout()
-        brand.setContentsMargins(8, 2, 2, 25)
-        brand.setSpacing(16)
+        brand.setContentsMargins(8, 0, 2, 19)
+        brand.setSpacing(12)
         logo = BrandMark()
         brand.addWidget(logo)
         col = QVBoxLayout()
         col.setSpacing(2)
         col.addWidget(label("ClassFlow", "brandName"))
-        col.addWidget(label("Academic Scheduler", "brandSub"))
+        col.addWidget(label("ACADEMIC SCHEDULING", "brandSub"))
         brand.addLayout(col)
         brand.addStretch()
         v.addLayout(brand)
@@ -222,15 +248,22 @@ class MainWindow(QMainWindow):
         divider.setObjectName("sidebarDivider")
         divider.setFixedHeight(1)
         v.addWidget(divider)
-        v.addSpacing(22)
-        lab = label("WORKSPACE MODULES", "navLabel")
-        lab.setContentsMargins(10, 0, 0, 3)
-        v.addWidget(lab)
+        v.addSpacing(13)
 
         self.nav_group = QButtonGroup(self)
         self.nav_btns = {}
         for key, num, text, icon in NAV:
+            if key == "dashboard":
+                lab = label("OVERVIEW", "navLabel")
+                lab.setContentsMargins(13, 0, 0, 1)
+                v.addWidget(lab)
+            elif key == "academic":
+                v.addSpacing(16)
+                lab = label("WORKSPACE", "navLabel")
+                lab.setContentsMargins(13, 0, 0, 1)
+                v.addWidget(lab)
             b = NavButton(num, text, icon)
+            b.setToolTip(PAGE_DESCRIPTIONS[key])
             b.clicked.connect(lambda _=False, k=key: self.go(k))
             self.nav_group.addButton(b)
             self.nav_btns[key] = b
@@ -240,59 +273,87 @@ class MainWindow(QMainWindow):
         card = QFrame()
         card.setObjectName("progressCard")
         cv = QVBoxLayout(card)
-        cv.setContentsMargins(12, 10, 12, 10)
+        cv.setContentsMargins(13, 13, 13, 13)
         cv.setSpacing(6)
         top = QHBoxLayout()
-        top.addWidget(label("Scheduling progress"))
+        top.addWidget(label("Schedule coverage", "progressTitle"))
         self.progress_pct = label("0%", "progressPct")
         top.addStretch()
         top.addWidget(self.progress_pct)
         cv.addLayout(top)
-        self.progress_bar = Bar(0)
+        self.progress_bar = Bar(0, COLORS["blue"])
         cv.addWidget(self.progress_bar)
         self.progress_term = label("", "brandSub")
         cv.addWidget(self.progress_term)
         v.addWidget(card)
-        v.addSpacing(8)
-        v.addWidget(label("Need help?", "helpTitle"))
-        v.addWidget(label("View scheduling guide", "helpSub"))
+        v.addSpacing(9)
+        footer = QFrame()
+        footer.setObjectName("sidebarProfile")
+        profile = QHBoxLayout(footer)
+        profile.setContentsMargins(9, 10, 9, 10)
+        profile.setSpacing(10)
+        self.profile_initial = label(self.username[:1].upper() or "A", "avatarTop", align=Qt.AlignCenter)
+        self.profile_initial.setFixedSize(35, 35)
+        profile.addWidget(self.profile_initial)
+        who = QVBoxLayout()
+        who.setSpacing(0)
+        self.profile_name = label(self.username, "userName")
+        who.addWidget(self.profile_name)
+        who.addWidget(label("Administrator", "muted"))
+        profile.addLayout(who, 1)
+        logout = QPushButton("↪")
+        logout.setObjectName("logout")
+        logout.setFixedSize(34, 34)
+        logout.setToolTip("Log out")
+        logout.clicked.connect(self.logout)
+        profile.addWidget(logout)
+        v.addWidget(footer)
         return side
 
     def _build_topbar(self):
         bar = QFrame()
         bar.setObjectName("topbar")
-        bar.setFixedHeight(62)
+        bar.setFixedHeight(78)
         h = QHBoxLayout(bar)
-        h.setContentsMargins(24, 0, 24, 0)
-        h.setSpacing(12)
+        h.setContentsMargins(29, 0, 30, 0)
+        h.setSpacing(13)
 
         left = QVBoxLayout()
-        left.setSpacing(0)
-        left.addWidget(label("Classroom Scheduling & Academic Timetabling System", "topTitle"))
+        left.setSpacing(3)
+        self.page_title = label("Dashboard", "topTitle")
+        self.page_context = label(PAGE_DESCRIPTIONS["dashboard"], "topContext")
+        left.addWidget(self.page_title)
+        left.addWidget(self.page_context)
         h.addLayout(left)
         h.addStretch()
+        self.search = QLineEdit()
+        self.search.setObjectName("globalSearch")
+        self.search.setPlaceholderText("⌕  Search subjects, faculty, rooms, schedules…")
+        self.search.setClearButtonEnabled(True)
+        self.search.setMinimumWidth(265)
+        self.search.setMaximumWidth(365)
+        self.search.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.search.returnPressed.connect(self._global_search)
+        self.search_model = QStringListModel(self)
+        self.search_completer = QCompleter(self.search_model, self)
+        self.search_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.search_completer.setFilterMode(Qt.MatchContains)
+        self.search_completer.setCompletionMode(QCompleter.PopupCompletion)
+        self.search_completer.setMaxVisibleItems(9)
+        self.search_completer.activated[str].connect(self._open_suggestion)
+        self.search.setCompleter(self.search_completer)
+        self.search.textEdited.connect(self._update_suggestions)
+        self._suggestion_targets = {}
+        self.search_shortcut = QShortcut(QKeySequence("Ctrl+K"), self)
+        self.search_shortcut.activated.connect(self._focus_search)
+        h.addWidget(self.search)
         self.term_combo = QComboBox()
-        self.term_combo.setMinimumWidth(220)
+        self.term_combo.setObjectName("termSelector")
+        self.term_combo.setMinimumWidth(200)
+        self.term_combo.setMaximumWidth(240)
+        self.term_combo.setToolTip("Active academic term")
         self.term_combo.currentIndexChanged.connect(self._term_changed)
         h.addWidget(self.term_combo)
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Search schedules, faculty, rooms…")
-        self.search.setFixedWidth(260)
-        self.search.returnPressed.connect(self._global_search)
-        h.addWidget(self.search)
-        av = label("CS", "avatarTop", align=Qt.AlignCenter)
-        av.setFixedSize(32, 32)
-        h.addWidget(av)
-        col = QVBoxLayout()
-        col.setSpacing(0)
-        col.addStretch()
-        col.addWidget(label("College Secretary", "userName"))
-        col.addWidget(label("Academic Office", "muted"))
-        col.addStretch()
-        h.addLayout(col)
-        logout = QPushButton("Log out")
-        logout.clicked.connect(self.logout)
-        h.addWidget(logout)
         self.reload_terms()
         return bar
 
@@ -326,6 +387,8 @@ class MainWindow(QMainWindow):
 
     def go(self, key, **kw):
         self.nav_btns[key].setChecked(True)
+        self.page_title.setText(next((title for k, _, title, _ in NAV if k == key), "ClassFlow"))
+        self.page_context.setText(PAGE_DESCRIPTIONS[key])
         page = self.pages[key]
         self.stack.setCurrentWidget(page)
         if kw and hasattr(page, "open"):
@@ -343,6 +406,8 @@ class MainWindow(QMainWindow):
     def data_changed(self):
         self.reload_terms()
         self.update_progress()
+        if self.stack.currentWidget() != self.pages["dashboard"]:
+            self.pages["dashboard"].refresh()
 
     def update_progress(self):
         if self.term_combo.currentData() is None:
@@ -357,30 +422,65 @@ class MainWindow(QMainWindow):
         query = self.search.text().strip()
         if not query:
             return
+        # Enter opens the best matching result; selecting from the suggestion
+        # list opens that exact record. Never default to an unrelated page.
+        matches = self._search_results(query)
+        if matches:
+            self._route_target(matches[0][1])
+        else:
+            self.notify(f"No records found for “{query}”. Try another search.", "warning")
 
-        schedules = self.pages["schedules"]
-        if hasattr(schedules, "search_all"):
-            self.go("schedules")
-            schedules.search_all(query)
-            return
+    def _focus_search(self):
+        self.search.setFocus()
+        self.search.selectAll()
 
-        normalized = query.casefold()
-        search_order = ("classrooms", "faculty", "sections", "subjects", "programs", "terms", "periods")
-        target = "subjects"
-        for key in search_order:
-            ent = ENTITIES[key]
-            if any(
-                normalized in str(value).casefold()
-                for row in db.rows(ent["sql"])
-                for value in tuple(row)[1:]
-            ):
-                target = key
-                break
+    def _search_results(self, query):
+        needle = query.strip().casefold()
+        if not needle:
+            return []
+        matches = []
 
-        self.go("academic")
-        page = self.pages["academic"]
-        page.set_tab(target)
-        page.search.setText(query)
+        for group in logic.group_rows(logic.schedule_rows(self.term_id())):
+            values = (group["code"], group["section"], group["faculty"],
+                      group["room"], group["days_label"], group["time_label"])
+            if any(needle in str(value).casefold() for value in values):
+                title = f"Schedule · {group['code']} — {group['section']} ({group['days_label']})"
+                matches.append((title, ("schedule", tuple(group["ids"]))))
+
+        for key in ("subjects", "faculty", "classrooms", "sections", "programs", "terms", "periods"):
+            entity = ENTITIES[key]
+            for record in db.rows(entity["sql"]):
+                values = tuple(record)[1:]
+                if any(needle in str(value).casefold() for value in values):
+                    title = str(values[0])
+                    if key == "subjects" and len(values) > 1:
+                        title += f" — {values[1]}"
+                    matches.append((f"{entity['singular']} · {title}", ("academic", key, record["id"])))
+        return matches[:18]
+
+    def _update_suggestions(self, query):
+        matches = self._search_results(query) if query.strip() else []
+        self._suggestion_targets = {text: target for text, target in matches}
+        self.search_model.setStringList([text for text, _ in matches])
+        if matches and self.search.hasFocus():
+            self.search_completer.setCompletionPrefix(query)
+            self.search_completer.complete()
+        else:
+            self.search_completer.popup().hide()
+
+    def _open_suggestion(self, text):
+        target = self._suggestion_targets.get(text)
+        if target:
+            self._route_target(target)
+
+    def _route_target(self, target):
+        if target[0] == "schedule":
+            self.go("schedules", edit_ids=list(target[1]))
+        else:
+            _, tab, record_id = target
+            self.go("academic", tab=tab, edit_id=record_id)
+        self.search_completer.popup().hide()
+        self.search.clear()
 
     def notify(self, text, kind="success"):
         self.msg.setText(text)
@@ -394,7 +494,11 @@ class MainWindow(QMainWindow):
         from ui.login import LoginDialog
         from PyQt5.QtWidgets import QDialog
         self.hide()
-        if LoginDialog().exec_() == QDialog.Accepted:
+        dialog = LoginDialog()
+        if dialog.exec_() == QDialog.Accepted:
+            self.username = dialog.username.text().strip()
+            self.profile_name.setText(self.username)
+            self.profile_initial.setText(self.username[:1].upper() or "A")
             self.show()
         else:
             self.close()

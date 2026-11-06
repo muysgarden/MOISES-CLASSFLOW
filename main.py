@@ -14,12 +14,13 @@ def main():
     app.setStyleSheet(build_qss())
     db.init(); auth.init(); init_availability()
     # No destructive reset flag: existing records are never silently erased.
-    if LoginDialog().exec_()!=QDialog.Accepted:
+    login = LoginDialog()
+    if login.exec_()!=QDialog.Accepted:
         return 0
     if db.is_empty():
         if '--seed' in sys.argv or QMessageBox.question(None,'Welcome to ClassFlow','Load sample academic data to explore the system?\nChoose No to start with your own records.',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes:
             db.seed()
-    win=MainWindow(); win.show()
+    win=MainWindow(username=login.username.text().strip()); win.show()
     return app.exec_()
 
 

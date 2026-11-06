@@ -43,6 +43,35 @@ class SystemTests(unittest.TestCase):
         self.assertFalse(second.error.isHidden()); self.assertEqual(second.result(),0)
         second.password.setText('password-123'); second.login(); self.assertEqual(second.result(),1)
 
+    def test_phase_one_dashboard_and_global_search(self):
+        win = MainWindow(username='Moises')
+        win.show(); app.processEvents()
+        self.assertEqual(win.stack.currentWidget(), win.pages['dashboard'])
+        self.assertEqual(win.profile_name.text(), 'Moises')
+        dash = win.pages['dashboard']
+        count = db.row('SELECT COUNT(*) FROM faculty')[0]
+        self.assertEqual(dash.metrics['faculty'].text(), f'{count:,}')
+        self.assertEqual(dash.metrics['assignments'].text(),
+                         str(len(logic.group_rows(logic.schedule_rows(win.term_id())))))
+
+        faculty = db.row('SELECT id, name FROM faculty ORDER BY name LIMIT 1')
+        results = win._search_results(faculty['name'][:6])
+        matches = [target for _, target in results
+                   if target == ('academic', 'faculty', faculty['id'])]
+        self.assertTrue(matches, 'Global search should suggest database records')
+        win._route_target(matches[0])
+        self.assertEqual(win.stack.currentWidget(), win.pages['academic'])
+        self.assertEqual(win.pages['academic'].tab, 'faculty')
+        self.assertEqual(win.pages['academic'].edit_id, faculty['id'])
+        win.go('dashboard')
+
+        group = logic.group_rows(logic.schedule_rows(win.term_id()))[0]
+        win._route_target(('schedule', tuple(group['ids'])))
+        self.assertEqual(win.stack.currentWidget(), win.pages['schedules'])
+        self.assertEqual(set(win.pages['schedules'].replace_ids), set(group['ids']))
+        self.assertEqual(win._search_results('there-is-no-classflow-result'), [])
+        win.close()
+
     def test_schedule_conflicts(self):
         r=logic.schedule_rows(1)[0]
         issues=logic.check_candidate(1,r['subject_id'],r['section_id'],r['faculty_id'],r['room_id'],[r['day']],r['start_min'],r['end_min'])

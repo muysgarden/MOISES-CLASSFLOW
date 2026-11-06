@@ -3,6 +3,7 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPixmap, QColor, QPainterPath, QIcon, QPen
 from PyQt5.QtWidgets import QDialog, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QPushButton
 import auth
+from ui.theme import gradient
 
 ASSETS = Path(__file__).resolve().parent.parent / 'assets'
 
@@ -43,6 +44,19 @@ class LoginDialog(QDialog):
             QPushButton#loginButton { background:#6021b5; color:white; border:1px solid #8246ca; border-radius:16px; padding:9px; }
             QPushButton#eye { background:transparent; border:0; color:#bbb; padding:0; min-width:26px; }
             QLabel#error { color:#efb8b8; background:#421d20; padding:8px; font-size:10px; }
+        ''')
+        # Preserve the split-photo login the user prefers, while carrying the
+        # same blue-to-purple accent into the new dashboard.
+        self.setStyleSheet(self.styleSheet() + f'''
+            QPushButton#loginButton {{
+                background: {gradient()};
+                border: none; border-radius: 15px;
+                min-height: 25px; font-weight: 700;
+            }}
+            QPushButton#loginButton:hover {{
+                background: {gradient("#3D86F4", "#AB4CF0")};
+            }}
+            QLineEdit:focus {{ border: 1px solid #7F6BE5; }}
         ''')
         root = QVBoxLayout(self)
         root.setContentsMargins(20, 10, 20, 20)
