@@ -3,7 +3,7 @@ os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 import unittest
 from unittest.mock import patch
 import tempfile
-from PyQt5.QtWidgets import QApplication, QFrame
+from PyQt5.QtWidgets import QApplication, QFrame, QMessageBox
 from PyQt5.QtPrintSupport import QPrinter
 from PyQt5.QtTest import QTest
 from PyQt5.QtCore import Qt
@@ -143,6 +143,40 @@ class SystemTests(unittest.TestCase):
         new=db.row('SELECT MAX(id) FROM schedules')[0]; self.assertEqual(len(logic.schedule_rows(1)),before+1)
         logic.delete_schedules(1,[new]); self.assertEqual(len(logic.schedule_rows(1)),before)
         result=logic.validate_term(1); self.assertGreater(result['critical'],0); self.assertLess(result['score'],100)
+
+    def test_availability_cards_and_block_management(self):
+        win = MainWindow()
+        page = win.pages['availability']
+        page.refresh()
+        self.assertEqual(page.tabs.count(), 2)
+        self.assertIn('free', page.counts[0].text())
+        self.assertIn('free', page.counts[1].text())
+        page.search.setText('no such name')
+        self.assertIn('0 / 0', page.counts[0].text())
+        page.search.clear()
+
+        # User opens the inline editor, types a known resource, and saves a
+        # genuine unavailable window; invalid ad-hoc names are not accepted.
+        page.update_availability()
+        self.assertFalse(page.editor.isHidden())
+        self.assertTrue(page.resource.isEditable())
+        page.resource.setEditText('made up name')
+        before = db.row('SELECT COUNT(*) FROM unavailable')[0]
+        page.save_unavailability()
+        self.assertEqual(db.row('SELECT COUNT(*) FROM unavailable')[0], before)
+        faculty = db.row('SELECT id,name FROM faculty ORDER BY name LIMIT 1')
+        page.resource.setEditText('Faculty · ' + faculty['name'])
+        page.block_day.setCurrentIndex(page.block_day.findData('Sat'))
+        page.block_start.setCurrentIndex(page.block_start.findData(8 * 60))
+        page.block_end.setCurrentIndex(page.block_end.findData(9 * 60))
+        page.save_unavailability()
+        block = db.row('SELECT * FROM unavailable ORDER BY id DESC LIMIT 1')
+        self.assertEqual(block['resource_id'], faculty['id'])
+        self.assertTrue(unavailable('faculty', faculty['id'], 'Sat', 8 * 60, 9 * 60))
+        with patch('ui.availability.QMessageBox.question', return_value=QMessageBox.Yes):
+            page.remove_unavailability(block['id'])
+        self.assertFalse(unavailable('faculty', faculty['id'], 'Sat', 8 * 60, 9 * 60))
+        win.close()
 
     def test_empty_database_workflow(self):
         db.conn.close(); db.init(':memory:'); auth.init(); init_availability()

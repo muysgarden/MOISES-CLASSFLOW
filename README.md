@@ -64,6 +64,12 @@ New text and numeric fields start blank, and required numeric values are validat
 
 The optional first-run demo dataset now tags the records it creates. Under **Settings → Data management**, an administrator can review the number of tagged demo records and, after explicit confirmation, remove only those original records. This is transactional: edited samples and references from non-demo records block cleanup and leave the database unchanged. Hand-entered data is never identified as sample data merely because its name resembles an example. Databases seeded in older versions have no trustworthy tags, so those historical records are *not* eligible for automatic cleanup; use normal record-by-record controls to review them.
 
+## Phase 3: Faculty & Room Availability (Module 2)
+
+Select a day and time range to see **Available**, **Scheduled**, **Unavailable**, or **Load full** status on readable faculty and classroom cards. Faculty and rooms have separate tabs, a name search filters both views, and classroom results have an additional room-type filter. The available counts reflect the selected time and, for faculty, whether their teaching-load limit has been reached.
+
+Open **Manage unavailable times** to find a faculty member or classroom by typing, set a specific day and time interval, review existing blocked windows, or remove an individual window after confirmation. Scheduled classes and manually blocked intervals both affect availability. If a demo resource has administrator-created blocked windows, demo cleanup pauses until those windows are reviewed and removed; it never silently deletes them.
+
 ## Modules
 
 1. **Academic Data Management** — add, edit, delete, search, and filter programs, sections, subjects, faculty, classrooms, academic terms, and school periods. In-use records are protected from deletion.

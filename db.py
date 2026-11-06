@@ -114,6 +114,22 @@ def clear_sample_data():
                         "A demo subject has new program assignments. "
                         "Review those relationships before clearing samples."
                     )
+            # Availability windows are entered by the administrator and are
+            # not demo records. Never silently erase those windows or leave
+            # them pointing at a resource removed by cleanup.
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='unavailable'"
+            ).fetchone():
+                for kind, table in (("faculty", "faculty"), ("room", "classrooms")):
+                    for rid in tagged[table]:
+                        if conn.execute(
+                            "SELECT 1 FROM unavailable WHERE kind=? AND resource_id=? LIMIT 1",
+                            (kind, rid)
+                        ).fetchone():
+                            raise ValueError(
+                                "A demo faculty member or room has manually blocked times. "
+                                "Remove those unavailable windows in Module 2 before clearing samples."
+                            )
             for sid, pid in sample_links:
                 if sid in tagged["subjects"]:
                     conn.execute(
