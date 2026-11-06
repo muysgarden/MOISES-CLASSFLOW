@@ -3,9 +3,9 @@ import re
 import sqlite3
 
 from PyQt5.QtCore import QTime, Qt
-from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QColor, QIntValidator
 from PyQt5.QtWidgets import (
-    QAbstractItemView, QHeaderView, QButtonGroup, QCheckBox, QFrame,
+    QAbstractItemView, QHeaderView, QButtonGroup, QCheckBox, QCompleter, QFrame,
     QGraphicsDropShadowEffect, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
     QSizePolicy, QVBoxLayout, QWidget,
 )
@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
 import db
 import logic
 from ui.widgets import (
-    Card, Combo, Page, Spin, TimeEdit, action_icon, button, clear_layout, empty_row, label, labeled, make_table,
+    Card, Combo, Page, TimeEdit, action_icon, button, clear_layout, empty_row, label, make_table,
     set_combo, text_item, widget_cell,
 )
 
@@ -161,7 +161,7 @@ class FormPanel(QFrame):
         super().__init__(page)
         self.page = page
         self.setObjectName("recordPanel")
-        self.setFixedWidth(310)
+        self.setFixedWidth(350)
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(22)
         shadow.setColor(QColor(18, 39, 82, 28))
@@ -240,19 +240,23 @@ class FormPanel(QFrame):
                 w.setMaxLength(f["maxlen"])
             w.returnPressed.connect(self.page.save)
         elif kind == "int":
-            w = Spin()
-            w.setRange(f["min"], f["max"])
-            w.setValue(f["default"])
-            w.setSuffix(f.get("suffix", ""))
+            # A fresh form is genuinely empty; the database receives a number
+            # only after the person enters it.
+            w = QLineEdit()
+            w.setPlaceholderText(f"Enter {f['label'].lower()}")
+            w.setValidator(QIntValidator(f["min"], f["max"], w))
         elif kind == "choice":
             w = Combo()
+            w.addItem(f"Select {f['label'].lower()}…", None)
             for value, text in f["options"]:
                 w.addItem(text, value)
+            self._searchable(w)
         elif kind == "fk":
             w = Combo()
             w.addItem(f.get("placeholder", "Select…"), None)
             for r in db.rows(f["sql"]):
                 w.addItem(r[1], r[0])
+            self._searchable(w)
         elif kind == "bool":
             w = QCheckBox(f.get("checkbox", ""))
         elif kind == "time":
@@ -275,6 +279,21 @@ class FormPanel(QFrame):
         self.errors[key] = err
         return box
 
+    @staticmethod
+    def _searchable(combo):
+        """Editable lookup with suggestions, but never save an unknown value."""
+        combo.setEditable(True)
+        combo.setInsertPolicy(combo.NoInsert)
+        combo.setMaxVisibleItems(9)
+        completer = QCompleter(combo.model(), combo)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchContains)
+        completer.setCompletionMode(QCompleter.PopupCompletion)
+        combo.setCompleter(completer)
+        combo.setCurrentIndex(0)
+        combo.lineEdit().clear()
+        combo.lineEdit().setPlaceholderText(combo.itemText(0))
+
     def set_mode(self, edit_name):
         s = self.ent["singular"]
         editing = edit_name is not None
@@ -292,9 +311,11 @@ class FormPanel(QFrame):
             if k == "text":
                 w.clear()
             elif k == "int":
-                w.setValue(f["default"])
+                w.clear()
             elif k in ("choice", "fk"):
                 w.setCurrentIndex(0)
+                if w.isEditable():
+                    w.lineEdit().clear()
             elif k == "bool":
                 w.setChecked(False)
             elif k == "time":
@@ -313,7 +334,7 @@ class FormPanel(QFrame):
             if k == "text":
                 w.setText(v)
             elif k == "int":
-                w.setValue(v)
+                w.setText(str(v))
             elif k in ("choice", "fk"):
                 set_combo(w, v)
             elif k == "bool":
@@ -333,11 +354,19 @@ class FormPanel(QFrame):
                 if not v and f.get("required", True):
                     errs[key] = f"{f['label']} is required."
             elif k == "int":
-                v = w.value()
+                raw = w.text().strip()
+                v = int(raw) if raw.isdigit() else None
+                if v is None or not f["min"] <= v <= f["max"]:
+                    errs[key] = f"Enter {f['label'].lower()} from {f['min']} to {f['max']}."
             elif k in ("choice", "fk"):
-                v = w.currentData()
-                if k == "fk" and v is None:
-                    errs[key] = f"Please select a {f['label'].lower().replace('academic ', '')}."
+                # QComboBox.currentData can remain stale when the editor text
+                # has been changed manually. Resolve the exact displayed item.
+                typed = w.currentText().strip()
+                idx = next((i for i in range(1, w.count())
+                            if typed.casefold() == w.itemText(i).casefold()), -1)
+                v = w.itemData(idx) if idx >= 0 else None
+                if v is None and (k == "choice" or f.get("required", True)):
+                    errs[key] = f"Choose a valid {f['label'].lower()} from the suggestions."
             elif k == "bool":
                 v = 1 if w.isChecked() else 0
             elif k == "time":
@@ -416,6 +445,9 @@ class AcademicPage(Page):
         self.card_foot = foot
 
         self.form = FormPanel(self)
+        # Give the records table the full workspace until someone actually
+        # chooses Add or Edit. This makes long subject/faculty names readable.
+        self.form.hide()
         content = QWidget()
         content_layout = QHBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
@@ -426,12 +458,6 @@ class AcademicPage(Page):
 
         self._ids = []
         self.set_tab("subjects")
-
-    def new_record(self):
-        self.edit_id = None
-        self.form.reset()
-        self.form.set_mode(None)
-        self.form.widgets[self.ent["fields"][0]["key"]].setFocus()
 
     @property
     def ent(self):
@@ -459,6 +485,7 @@ class AcademicPage(Page):
         self.prog_filter.setVisible(key == "subjects")
         self.type_filter.setVisible(key == "subjects")
         self.form.build(ent)
+        self.form.hide()
         self._rebuild_table()
         self.refresh()
 
@@ -484,11 +511,14 @@ class AcademicPage(Page):
 
     def new_record(self):
         self.clear_form()
+        self.form.show()
+        self.form.widgets[self.ent["fields"][0]["key"]].setFocus()
 
     def clear_form(self):
         self.edit_id = None
         self.form.reset()
         self.form.set_mode(None)
+        self.form.hide()
         self.table.clearSelection()
         self.refresh()
 
@@ -582,7 +612,11 @@ class AcademicPage(Page):
         if self.edit_id in self._ids:
             t.selectRow(self._ids.index(self.edit_id))
 
-        self.card_foot.hide()
+        self.showing.setText(
+            f"Showing {start + 1}–{start + len(chunk)} of {total} records" if total
+            else "No records to display"
+        )
+        self.card_foot.setVisible(pages > 1)
         self._build_pager(pages)
 
     def _action_cell(self, ri, col, r):
@@ -636,12 +670,15 @@ class AcademicPage(Page):
         self.edit_id = rid
         self.form.load(r, multi)
         self.form.set_mode(r[ent["fields"][0]["key"]])
+        self.form.show()
         self.form.widgets[ent["fields"][0]["key"]].setFocus()
         self.refresh()
 
     def save(self):
         ent, tab = self.ent, self.tab
         vals, errs = self.form.values()
+        if tab == "subjects" and not vals["programs"]:
+            errs["programs"] = "Select at least one academic program."
         if not errs and ent.get("validate"):
             errs = ent["validate"](vals)
         self.form.show_errors(errs)
@@ -679,6 +716,7 @@ class AcademicPage(Page):
         self.edit_id = None
         self.form.reset()
         self.form.set_mode(None)
+        self.form.hide()
         self.refresh(focus_id=rid)
         self.win.data_changed()
         self.win.notify(f"{ent['singular']} “{name}” {'updated' if editing else 'added'}.", "success")
@@ -698,6 +736,26 @@ class AcademicPage(Page):
 
     def delete(self, rid, name):
         ent = self.ent
+        # Explain a protected record *before* asking for confirmation. SQLite
+        # intentionally prevents deleting records still used by a schedule.
+        dependencies = {
+            "programs": (("sections", "program_id", "sections"),
+                         ("subject_programs", "program_id", "subject mappings")),
+            "subjects": (("schedules", "subject_id", "scheduled classes"),),
+            "sections": (("schedules", "section_id", "scheduled classes"),),
+            "faculty": (("schedules", "faculty_id", "scheduled classes"),),
+            "classrooms": (("schedules", "room_id", "scheduled classes"),
+                           ("subjects", "preferred_room_id", "subjects preferring this room")),
+            "terms": (("schedules", "term_id", "scheduled classes"),),
+        }
+        for table, column, description in dependencies.get(self.tab, ()):
+            count = db.row(f"SELECT COUNT(*) AS n FROM {table} WHERE {column}=?", (rid,))["n"]
+            if count:
+                self.win.notify(
+                    f"Cannot delete “{name}”: it is linked to {count} {description}. "
+                    "Update or remove those references first.", "error"
+                )
+                return
         if not self.confirm(f"Delete {ent['singular'].lower()}",
                             f"Delete {ent['singular'].lower()} “{name}”?\nThis cannot be undone."):
             return

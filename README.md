@@ -54,6 +54,12 @@ To customize the appearance, edit the color values in `ui/theme.py`. Shared app-
 
 The login remains intentionally dark while sharing the same gradient accent and typography as the new light dashboard.
 
+## Phase 2: Academic Records (Module 1)
+
+The existing seven Academic Records tabs remain intact. Records occupy the full table area by default; **Add New Record** or **Edit** reveals the inline form, and saving or cancelling restores the full-width table. The table's page controls appear when there are more than eight records.
+
+New text and numeric fields start blank, and required numeric values are validated before saving. Program, room and other selection fields support typing with matching suggestions; unrecognized values are rejected. Edits update the existing SQLite record, while Delete removes records after confirmation if no dependent schedules or other references require them. A clear explanation names the dependent records when deletion is blocked. No existing data is silently discarded or reset.
+
 ## Modules
 
 1. **Academic Data Management** — add, edit, delete, search, and filter programs, sections, subjects, faculty, classrooms, academic terms, and school periods. In-use records are protected from deletion.

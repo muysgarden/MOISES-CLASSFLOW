@@ -151,7 +151,9 @@ class SystemTests(unittest.TestCase):
             win.go(key); app.processEvents()
         self.assertEqual(logic.validate_term(win.term_id())['total'],0)
         page=win.pages['academic']; page.set_tab('programs')
-        combo=page.form.widgets['name']; combo.setCurrentIndex(0)
+        combo=page.form.widgets['name']
+        self.assertEqual(combo.currentText(), '')
+        combo.setCurrentIndex(1)
         page.save()
         self.assertEqual(db.row('SELECT COUNT(*) FROM programs')[0],1)
         win.close()
@@ -181,8 +183,54 @@ class SystemTests(unittest.TestCase):
         page.form.widgets['name'].setText('Prof. Test Faculty')
         page.form.widgets['department'].setText('Computer Science')
         page.form.widgets['email'].setText('faculty@example.edu')
+        self.assertEqual(page.form.widgets['max_units'].text(), '')
+        page.form.widgets['max_units'].setText('18')
         page.save()
         self.assertIsNotNone(db.row('SELECT * FROM faculty WHERE name=?',('Prof. Test Faculty',)))
+        win.close()
+
+    def test_academic_edit_delete_and_searchable_fields(self):
+        win = MainWindow()
+        page = win.pages['academic']
+        page.set_tab('faculty')
+        page.new_record()
+        self.assertEqual(page.form.widgets['name'].text(), '')
+        self.assertEqual(page.form.widgets['max_units'].text(), '')
+        page.form.widgets['name'].setText('Prof. New Faculty')
+        page.form.widgets['department'].setText('Computer Science')
+        page.form.widgets['max_units'].setText('20')
+        page.save()
+        rid = db.row("SELECT id FROM faculty WHERE name='Prof. New Faculty'")['id']
+        page.edit(rid)
+        self.assertEqual(page.form.widgets['name'].text(), 'Prof. New Faculty')
+        page.form.widgets['name'].setText('Dr. Edited Faculty')
+        page.form.widgets['max_units'].setText('22')
+        page.save()
+        self.assertEqual(db.row('SELECT name, max_units FROM faculty WHERE id=?', (rid,))['max_units'], 22)
+        self.assertEqual(db.row('SELECT name FROM faculty WHERE id=?', (rid,))['name'], 'Dr. Edited Faculty')
+        with patch.object(page, 'confirm', return_value=True):
+            page.delete(rid, 'Dr. Edited Faculty')
+        self.assertIsNone(db.row('SELECT id FROM faculty WHERE id=?', (rid,)))
+
+        page.set_tab('sections')
+        program = page.form.widgets['program_id']
+        self.assertTrue(program.isEditable())
+        self.assertEqual(program.currentText(), '')
+        program.setEditText('BSCS')
+        self.assertEqual(page.form.values()[0]['program_id'],
+                         db.row("SELECT id FROM programs WHERE code='BSCS'")['id'])
+        program.setEditText('not a real program')
+        self.assertIn('program_id', page.form.values()[1])
+        page.set_tab('subjects')
+        self.assertFalse(page.form.isVisible())
+        self.assertFalse(page.card_foot.isHidden())
+        scheduled = db.row('SELECT subject_id FROM schedules LIMIT 1')['subject_id']
+        subject = db.row('SELECT code FROM subjects WHERE id=?', (scheduled,))['code']
+        with patch.object(page, 'confirm', return_value=True) as confirm:
+            page.delete(scheduled, subject)
+            confirm.assert_not_called()
+        self.assertIsNotNone(db.row('SELECT id FROM subjects WHERE id=?', (scheduled,)))
+        self.assertIn('linked to', win.msg.text())
         win.close()
 
     def test_exports_and_auth_disk_persistence(self):
