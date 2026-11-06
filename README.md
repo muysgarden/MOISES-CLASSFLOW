@@ -82,7 +82,7 @@ The class assignment form is hidden until the administrator clicks **New Schedul
 
 ## Phase 5: Conflict Checks (Module 4)
 
-The conflict screen uses three priority summaries rather than a wall of separate issue counters: **Needs fixing** (critical overlaps or unavailable resources), **Warnings** (capacity or teaching load), and **Review** (time-window exceptions). Actual database assignments determine the counts. Filter by section, priority, or issue type. Each result names the affected subject and section, explains the specific conflict (including the overlapping time when applicable), and has an **Edit** action that opens the corresponding assignment in Module 3. Editing is a manual correction; the action does not claim to resolve conflicts automatically. Running the checks again refreshes the results.
+The conflict screen uses three **clickable** priority summaries rather than a wall of separate issue counters: **Needs fixing** (critical overlaps or unavailable resources), **Warnings** (capacity or teaching load), and **Review** (time-window exceptions). Click a card to filter to that priority; click the active card again to show all issues. Actual database assignments determine the counts. You can also filter by section or issue type. Select a result row to view a simple detail panel explaining the conflict (including the overlapping time when applicable) and a single **View in Schedules** action that opens the corresponding assignment in Module 3. Editing is a manual correction; Module 4 does not claim to resolve conflicts automatically. Running the checks again refreshes the results.
 
 ## Modules
 

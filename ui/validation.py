@@ -1,13 +1,12 @@
 """Module 4: explain conflicts and link directly to the affected assignment."""
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QSizePolicy
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtWidgets import QAbstractItemView, QHBoxLayout, QLabel, QSizePolicy
 
 import db
 import logic
 from ui.widgets import (
-    Page, Card, Combo, Banner, button, label, make_table, text_item,
-    fit_table, widget_cell, set_kind,
+    Page, Card, Combo, button, label, make_table, text_item, fit_table,
 )
 
 EXPLANATIONS = {
@@ -20,6 +19,32 @@ EXPLANATIONS = {
     "Invalid Time": "The class time is invalid or outside the school period.",
     "Course Mismatch": "The subject is not part of the section's course.",
 }
+
+NEXT_STEPS = {
+    "Faculty Conflict": "Change the time or assigned faculty in Class Schedules.",
+    "Classroom Conflict": "Move one class to an available room or time.",
+    "Section Conflict": "Move one class to a different time for this section.",
+    "Unavailable Resource": "Choose another time, room, or faculty member.",
+    "Capacity Problem": "Assign a room that can accommodate the section.",
+    "Teaching-Load Issue": "Reassign a class to a faculty member with available load.",
+    "Invalid Time": "Adjust the class start or end time.",
+    "Course Mismatch": "Select a subject offered by the section's course.",
+}
+
+
+class PriorityCard(Card):
+    clicked = pyqtSignal(str)
+
+    def __init__(self, severity):
+        super().__init__()
+        self.severity = severity
+        self.setCursor(Qt.PointingHandCursor)
+        self.setObjectName("priorityCard")
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.severity)
+        super().mouseReleaseEvent(event)
 
 
 class ValidationPage(Page):
@@ -41,19 +66,28 @@ class ValidationPage(Page):
         overview.setSpacing(12)
         self.lay.addLayout(overview)
         self.counts = {}
+        self.priority_cards = {}
         for severity, title, hint, accent in (
             (logic.CRITICAL, "Needs fixing", "Conflicts that block a valid timetable", "#C53D48"),
             (logic.WARNING, "Warnings", "Capacity and teaching-load concerns", "#D28620"),
             (logic.REVIEW, "Review", "Check exceptions to the school period", "#4264B8"),
         ):
-            card = Card()
+            card = PriorityCard(severity)
+            card.clicked.connect(self.toggle_priority)
+            self.priority_cards[severity] = card
             body = card.body(margins=(18, 17, 18, 17), spacing=5)
-            body.addWidget(label(title, "cardTitle"))
+            heading = label(title, "cardTitle")
+            heading.setAttribute(Qt.WA_TransparentForMouseEvents)
+            body.addWidget(heading)
             count = QLabel("0")
             count.setStyleSheet(f"color: {accent}; font-size: 30px; font-weight: 750;")
+            count.setAttribute(Qt.WA_TransparentForMouseEvents)
             self.counts[severity] = count
             body.addWidget(count)
-            body.addWidget(label(hint, "muted", wrap=True))
+            subtitle = label(hint, "muted", wrap=True)
+            subtitle.setAttribute(Qt.WA_TransparentForMouseEvents)
+            body.addWidget(subtitle)
+            body.parentWidget().setAttribute(Qt.WA_TransparentForMouseEvents)
             overview.addWidget(card)
 
         self.severity = Combo()
@@ -76,19 +110,60 @@ class ValidationPage(Page):
         )
         self.results.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         self.lay.addWidget(self.results)
-        self.banner = Banner("good", "No scheduling conflicts found.")
-        self.results.body(margins=(16, 10, 16, 12)).addWidget(self.banner)
         self.table = make_table(
-            ["Priority", "Problem", "Affected Class", "What happened", "Action"],
-            row_h=66, fixed={0: 90, 4: 100}, flex={1: 2, 2: 2, 3: 5},
+            ["Priority", "Problem", "Affected Class", "What happened"],
+            row_h=60, fixed={0: 90}, flex={1: 2, 2: 2, 3: 5},
         )
+        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.cellClicked.connect(self.select_issue)
         self.results.add(self.table)
         self.empty = QLabel("No issues match these filters.")
         self.empty.setAlignment(Qt.AlignCenter)
         self.empty.setStyleSheet("color: #64748B; padding: 18px;")
         self.results.add(self.empty)
+        self.detail = Card("Selected Conflict", "Choose an issue above to view its details")
+        self.detail.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self.detail_body = self.detail.body(margins=(18, 8, 18, 16), spacing=7)
+        self.detail_title = QLabel("No conflict selected")
+        self.detail_title.setStyleSheet("font-size: 15px; font-weight: 750; color: #1B3155;")
+        self.detail_body.addWidget(self.detail_title)
+        self.detail_description = QLabel()
+        self.detail_description.setWordWrap(True)
+        self.detail_description.setStyleSheet("color: #334765; font-size: 13px;")
+        self.detail_body.addWidget(self.detail_description)
+        self.detail_hint = QLabel()
+        self.detail_hint.setWordWrap(True)
+        self.detail_hint.setStyleSheet("color: #64748B; font-size: 12px;")
+        self.detail_body.addWidget(self.detail_hint)
+        self.view_button = button("View in Schedules", "primary", self.view_selected)
+        self.detail_body.addWidget(self.view_button, alignment=Qt.AlignRight)
+        self.lay.addWidget(self.detail)
+        self.selected_issue = None
         self.lay.addStretch()
         self.finish()
+
+    def toggle_priority(self, severity):
+        self.severity.setCurrentIndex(
+            0 if self.severity.currentText() == severity
+            else self.severity.findText(severity)
+        )
+
+    def select_issue(self, row, _col=0):
+        if not 0 <= row < len(self.visible_issues):
+            return
+        issue = self.visible_issues[row]
+        self.selected_issue = issue
+        self.table.selectRow(row)
+        self.detail_title.setText(f"{issue['type']} · {issue['label']}")
+        self.detail_description.setText(issue["desc"])
+        self.detail_hint.setText(NEXT_STEPS.get(issue["type"], "Review the assignment in Class Schedules."))
+        self.detail.subtitle.setText("Review what happened and decide whether to edit the assignment")
+        self.detail.show()
+
+    def view_selected(self):
+        if self.selected_issue:
+            self.win.go("schedules", edit_ids=self.selected_issue["edit_ids"])
 
     def refresh(self):
         self.result = logic.validate_term(self.win.term_id())
@@ -118,24 +193,17 @@ class ValidationPage(Page):
             and (self.kind.currentData() is None
                  or issue["type"] == self.kind.currentData())
         ]
-        if not self.result["issues"]:
-            self.banner.title.setText("No scheduling issues detected")
-            self.banner.text.setText("Saved assignments passed the current checks.")
-            set_kind(self.banner, "good")
-        elif self.result["critical"]:
-            self.banner.title.setText(f"{self.result['critical']} critical issue(s) need attention")
-            self.banner.text.setText(
-                "Fix overlapping assignments or blocked resources before finalizing. "
-                "Select Edit to review a record."
+        self.visible_issues = issues
+        for severity, card in self.priority_cards.items():
+            active = self.severity.currentText() == severity
+            card.setStyleSheet(
+                "QFrame#priorityCard {border: 2px solid #5277DE; background: #F1F5FF; border-radius: 12px;}"
+                if active else
+                "QFrame#priorityCard {border: 1px solid #E4EAF3; background: white; border-radius: 12px;}"
             )
-            set_kind(self.banner, "bad")
-        else:
-            self.banner.title.setText("No critical conflicts — review remaining warnings")
-            self.banner.text.setText(
-                "Check capacity, teaching load, and schedule exceptions before finalizing."
-            )
-            set_kind(self.banner, "warn")
-        self.banner.text.show()
+        self.results.subtitle.setText(
+            f"Showing {len(issues)} of {len(self.result['issues'])} issues · Click a row for details"
+        )
         self.table.setRowCount(len(issues))
         for row, issue in enumerate(issues):
             for col, value in enumerate((
@@ -150,13 +218,12 @@ class ValidationPage(Page):
             description.setWordWrap(True)
             description.setContentsMargins(8, 4, 10, 4)
             description.setStyleSheet("color: #283955; font-size: 12px;")
+            description.setAttribute(Qt.WA_TransparentForMouseEvents)
             self.table.setCellWidget(row, 3, description)
-            widget_cell(
-                self.table, row, 4,
-                button("Edit", "smallPrimary",
-                       lambda _=False, ids=issue["edit_ids"]:
-                       self.win.go("schedules", edit_ids=ids)),
-            )
         fit_table(self.table)
         self.table.setVisible(bool(issues))
         self.empty.setVisible(not issues)
+        self.selected_issue = None
+        self.detail.hide()
+        if issues:
+            self.select_issue(0)
