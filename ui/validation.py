@@ -1,13 +1,19 @@
 """Module 4: explain conflicts and link directly to the affected assignment."""
 
 from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QAbstractItemView, QHBoxLayout, QLabel, QSizePolicy
 
-import db
 import logic
 from ui.widgets import (
-    Page, Card, Combo, button, label, make_table, text_item, fit_table,
+    Page, Card, button, label, make_table, text_item, fit_table,
 )
+
+PRIORITY_COLORS = {
+    logic.CRITICAL: ("#B42336", "#FFF0F2", "#F4B1BC"),
+    logic.WARNING: ("#AA6206", "#FFF5E5", "#F5D39B"),
+    logic.REVIEW: ("#3157AE", "#EDF4FF", "#B7CEF8"),
+}
 
 EXPLANATIONS = {
     "Faculty Conflict": "One faculty member has overlapping classes.",
@@ -51,12 +57,7 @@ class ValidationPage(Page):
     def __init__(self, win):
         super().__init__(win)
         self.setObjectName("validationPage")
-        self.setStyleSheet("""
-            #validationPage QComboBox {
-                background: white; border: 1px solid #DDE6F4;
-                border-radius: 8px; padding: 8px 10px; min-height: 28px;
-            }
-        """)
+        self.active_priority = None
         self.add_header(
             "MODULE 04", "Conflict Checks",
             "See which classes overlap, why they need attention, and where to edit them.",
@@ -68,9 +69,9 @@ class ValidationPage(Page):
         self.counts = {}
         self.priority_cards = {}
         for severity, title, hint, accent in (
-            (logic.CRITICAL, "Needs fixing", "Conflicts that block a valid timetable", "#C53D48"),
-            (logic.WARNING, "Warnings", "Capacity and teaching-load concerns", "#D28620"),
-            (logic.REVIEW, "Review", "Check exceptions to the school period", "#4264B8"),
+            (logic.CRITICAL, "Critical", "Overlaps and blocked resources", "#B42336"),
+            (logic.WARNING, "Warning", "Capacity and teaching-load concerns", "#AA6206"),
+            (logic.REVIEW, "Review", "Time-window exceptions", "#3157AE"),
         ):
             card = PriorityCard(severity)
             card.clicked.connect(self.toggle_priority)
@@ -90,23 +91,8 @@ class ValidationPage(Page):
             body.parentWidget().setAttribute(Qt.WA_TransparentForMouseEvents)
             overview.addWidget(card)
 
-        self.severity = Combo()
-        self.severity.addItems(["All priorities", logic.CRITICAL, logic.WARNING, logic.REVIEW])
-        self.severity.setMinimumWidth(155)
-        self.severity.currentIndexChanged.connect(self.render)
-        self.section = Combo()
-        self.section.addItem("All sections", None)
-        self.section.setMinimumWidth(155)
-        self.section.currentIndexChanged.connect(self.render)
-        self.kind = Combo()
-        self.kind.addItem("All issue types", None)
-        for name in EXPLANATIONS:
-            self.kind.addItem(name, name)
-        self.kind.setMinimumWidth(180)
-        self.kind.currentIndexChanged.connect(self.render)
         self.results = Card(
-            "Issues to Review", "Filter to find the classes that need attention",
-            right=[self.section, self.severity, self.kind],
+            "Issues to Review", "Click a colored card above to filter by priority",
         )
         self.results.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         self.lay.addWidget(self.results)
@@ -144,10 +130,8 @@ class ValidationPage(Page):
         self.finish()
 
     def toggle_priority(self, severity):
-        self.severity.setCurrentIndex(
-            0 if self.severity.currentText() == severity
-            else self.severity.findText(severity)
-        )
+        self.active_priority = None if self.active_priority == severity else severity
+        self.render()
 
     def select_issue(self, row, _col=0):
         if not 0 <= row < len(self.visible_issues):
@@ -171,14 +155,6 @@ class ValidationPage(Page):
             count.setText(str(sum(
                 issue["severity"] == severity for issue in self.result["issues"]
             )))
-        selected = self.section.currentData()
-        self.section.blockSignals(True)
-        self.section.clear()
-        self.section.addItem("All sections", None)
-        for record in db.rows("SELECT id, name FROM sections ORDER BY name"):
-            self.section.addItem(record["name"], record["id"])
-        self.section.setCurrentIndex(max(0, self.section.findData(selected)))
-        self.section.blockSignals(False)
         self.render()
 
     def render(self, *_):
@@ -186,30 +162,27 @@ class ValidationPage(Page):
             return
         issues = [
             issue for issue in self.result["issues"]
-            if (self.section.currentData() is None
-                or issue["section_id"] == self.section.currentData())
-            and (self.severity.currentIndex() == 0
-                 or issue["severity"] == self.severity.currentText())
-            and (self.kind.currentData() is None
-                 or issue["type"] == self.kind.currentData())
+            if self.active_priority is None or issue["severity"] == self.active_priority
         ]
         self.visible_issues = issues
         for severity, card in self.priority_cards.items():
-            active = self.severity.currentText() == severity
+            active = self.active_priority == severity
+            foreground, background, outline = PRIORITY_COLORS[severity]
             card.setStyleSheet(
-                "QFrame#priorityCard {border: 2px solid #5277DE; background: #F1F5FF; border-radius: 12px;}"
-                if active else
-                "QFrame#priorityCard {border: 1px solid #E4EAF3; background: white; border-radius: 12px;}"
+                f"QFrame#priorityCard {{border: {2 if active else 1}px solid {outline}; "
+                f"background: {background if active else '#FFFFFF'}; border-radius: 12px;}}"
             )
         self.results.subtitle.setText(
             f"Showing {len(issues)} of {len(self.result['issues'])} issues · Click a row for details"
         )
         self.table.setRowCount(len(issues))
         for row, issue in enumerate(issues):
-            for col, value in enumerate((
-                issue["severity"], issue["type"], issue["label"]
-            )):
+            for col, value in enumerate((issue["severity"], issue["type"], issue["label"])):
                 item = text_item(value, bold=col == 1)
+                if col == 0:
+                    foreground, background, _ = PRIORITY_COLORS[issue["severity"]]
+                    item.setForeground(QColor(foreground))
+                    item.setBackground(QColor(background))
                 item.setToolTip(
                     EXPLANATIONS.get(issue["type"], "") if col == 1 else value
                 )
