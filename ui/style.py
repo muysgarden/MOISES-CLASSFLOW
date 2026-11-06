@@ -334,11 +334,18 @@ QPushButton#nav:checked, QPushButton#nav:checked:hover { background: $gradient; 
 #sidebar QPushButton#nav QLabel { color: #52627A; font-size: 13px; }
 #sidebar QPushButton#nav:checked QLabel { color: #FFFFFF; font-weight: 700; }
 #sidebar #brandSub { color: $muted; }
-#sidebarProfile { background: #F8FAFD; border-top: 1px solid $border; border-radius: 10px; }
+QPushButton#profileTrigger {
+    background: #F8FAFD; border: 1px solid $border;
+    border-radius: 11px; padding: 0; text-align: left;
+}
+QPushButton#profileTrigger:hover { background: #EEF3FF; border-color: #C8D7F8; }
+#sidebar QPushButton#profileTrigger QLabel { background: transparent; color: $ink; }
+#sidebar QPushButton#profileTrigger QLabel#avatarTop {
+    background: $gradient; color: white; border-radius: 17px;
+}
+#profileChevron { color: $muted; font-size: 19px; }
 #userName { color: $ink; font-size: 12px; font-weight: 700; }
 #avatarTop { background: $gradient; color: white; border-radius: 17px; font-size: 15px; font-weight: 700; }
-QPushButton#logout { background: transparent; border: none; font-size: 19px; color: $muted; padding: 0; }
-QPushButton#logout:hover { background: #EAEFF8; color: $blue; }
 
 /* Search is real and uses a database-backed popup. */
 #topbar { background: $surface; border-bottom: 1px solid $border; }

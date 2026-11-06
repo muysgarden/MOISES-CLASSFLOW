@@ -13,6 +13,7 @@ from ui.placeholder import PlaceholderPage
 from ui.academic import ENTITIES
 from ui.widgets import label, set_kind
 from ui.dashboard import DashboardPage
+from ui.profile import ProfileDialog
 
 PAGE_CLASSES = {
     "academic": "AcademicPage", "availability": "AvailabilityPage", "schedules": "SchedulesPage",
@@ -263,9 +264,13 @@ class MainWindow(QMainWindow):
             v.addWidget(b)
         v.addStretch()
 
-        footer = QFrame()
-        footer.setObjectName("sidebarProfile")
-        profile = QHBoxLayout(footer)
+        self.profile_trigger = QPushButton()
+        self.profile_trigger.setObjectName("profileTrigger")
+        self.profile_trigger.setToolTip("Open administrator account settings")
+        self.profile_trigger.setCursor(Qt.PointingHandCursor)
+        self.profile_trigger.setFixedHeight(64)
+        self.profile_trigger.clicked.connect(self.open_profile)
+        profile = QHBoxLayout(self.profile_trigger)
         profile.setContentsMargins(9, 10, 9, 10)
         profile.setSpacing(10)
         self.profile_initial = label(self.username[:1].upper() or "A", "avatarTop", align=Qt.AlignCenter)
@@ -277,13 +282,10 @@ class MainWindow(QMainWindow):
         who.addWidget(self.profile_name)
         who.addWidget(label("Administrator", "muted"))
         profile.addLayout(who, 1)
-        logout = QPushButton("↪")
-        logout.setObjectName("logout")
-        logout.setFixedSize(34, 34)
-        logout.setToolTip("Log out")
-        logout.clicked.connect(self.logout)
-        profile.addWidget(logout)
-        v.addWidget(footer)
+        profile.addWidget(label("›", "profileChevron"))
+        for child in self.profile_trigger.findChildren(QLabel):
+            child.setAttribute(Qt.WA_TransparentForMouseEvents)
+        v.addWidget(self.profile_trigger)
         return side
 
     def _build_topbar(self):
@@ -452,6 +454,15 @@ class MainWindow(QMainWindow):
         self._msg_token += 1
         token = self._msg_token
         QTimer.singleShot(6000, lambda: self.msg.hide() if token == self._msg_token else None)
+
+    def open_profile(self):
+        dialog = ProfileDialog(self.username, self)
+        dialog.exec_()
+        self.username = dialog.username
+        self.profile_name.setText(self.username)
+        self.profile_initial.setText(self.username[:1].upper() or "A")
+        if dialog.sign_out_requested:
+            self.logout()
 
     def logout(self):
         from ui.login import LoginDialog

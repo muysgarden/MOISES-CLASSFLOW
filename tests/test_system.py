@@ -13,6 +13,7 @@ import logic
 from ui.availability import init_availability, unavailable
 from ui.login import LoginDialog
 from ui.main_window import MainWindow
+from ui.profile import ProfileDialog
 from ui.style import build_qss
 
 app=QApplication.instance() or QApplication([])
@@ -42,6 +43,40 @@ class SystemTests(unittest.TestCase):
         second=LoginDialog(); second.username.setText('registrar'); second.password.setText('incorrect'); second.login()
         self.assertFalse(second.error.isHidden()); self.assertEqual(second.result(),0)
         second.password.setText('password-123'); second.login(); self.assertEqual(second.result(),1)
+
+    def test_administrator_profile_popup(self):
+        auth.create('Moises', 'correct-password')
+        win = MainWindow(username='Moises')
+        self.assertTrue(win.profile_trigger.isEnabled())
+        with patch('ui.main_window.ProfileDialog') as popup:
+            popup.return_value.username = 'Moises'
+            popup.return_value.sign_out_requested = False
+            QTest.mouseClick(win.profile_trigger, Qt.LeftButton)
+            popup.return_value.exec_.assert_called_once()
+        profile = ProfileDialog('Moises', win)
+        self.assertFalse(profile.isFullScreen())
+        profile.new_username.setText('UpdatedMoises')
+        profile.username_password.setText('wrong-password')
+        profile.save_username()
+        self.assertTrue(auth.verify('Moises', 'correct-password'))
+        self.assertEqual(profile.username, 'Moises')
+
+        profile.username_password.setText('correct-password')
+        profile.save_username()
+        self.assertEqual(profile.username, 'UpdatedMoises')
+        self.assertFalse(auth.verify('Moises', 'correct-password'))
+        self.assertTrue(auth.verify('UpdatedMoises', 'correct-password'))
+
+        profile.current_password.setText('correct-password')
+        profile.new_password.setText('new-password-123')
+        profile.confirm_password.setText('new-password-123')
+        profile.save_password()
+        self.assertTrue(auth.verify('UpdatedMoises', 'new-password-123'))
+        self.assertFalse(auth.verify('UpdatedMoises', 'correct-password'))
+        profile.sign_out()
+        self.assertTrue(profile.sign_out_requested)
+        profile.close()
+        win.close()
 
     def test_phase_one_dashboard_and_global_search(self):
         win = MainWindow(username='Moises')
