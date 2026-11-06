@@ -23,6 +23,8 @@ LOOKUPS = (
     ("room_id", "Classroom", "SELECT id, name || ' · ' || capacity || ' seats' FROM classrooms ORDER BY name"),
 )
 
+SCHEDULES_PER_PAGE = 8
+
 
 def searchable():
     combo = Combo()
@@ -375,10 +377,10 @@ class SchedulesPage(Page):
             and (self.list_section.currentData() is None
                  or group["section_id"] == self.list_section.currentData())
         ]
-        pages = max(1, math.ceil(len(groups) / 10))
+        pages = max(1, math.ceil(len(groups) / SCHEDULES_PER_PAGE))
         self.page_no = min(max(0, self.page_no), pages - 1)
-        start = self.page_no * 10
-        groups = groups[start:start + 10]
+        start = self.page_no * SCHEDULES_PER_PAGE
+        groups = groups[start:start + SCHEDULES_PER_PAGE]
         sections = {
             record["id"]: record["code"] for record in db.rows(
                 "SELECT s.id,p.code FROM sections s JOIN programs p ON p.id=s.program_id"

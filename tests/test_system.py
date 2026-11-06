@@ -136,12 +136,12 @@ class SystemTests(unittest.TestCase):
         win = MainWindow()
         page = win.pages['schedules']
         page.refresh()
-        self.assertLessEqual(page.table.rowCount(), 10)
+        self.assertLessEqual(page.table.rowCount(), 8)
         self.assertIn('of', page.current_page.text())
         self.assertEqual(page.calendar.step_minutes, 30)
 
         page.next_page.click()
-        self.assertLessEqual(page.table.rowCount(), 10)
+        self.assertLessEqual(page.table.rowCount(), 8)
         if page.page_no:
             self.assertTrue(page.prev_page.isEnabled())
         page.list_section.setCurrentIndex(1)
