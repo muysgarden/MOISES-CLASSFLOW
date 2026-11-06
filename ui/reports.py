@@ -2,7 +2,7 @@ import csv
 import html
 from PyQt5.QtGui import QTextDocument
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
-from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QFileDialog
+from PyQt5.QtWidgets import QHBoxLayout, QWidget, QFileDialog
 from ui.widgets import Page, Card, Combo, CalendarWidget, BarChart, Banner, button, labeled, label, make_table, text_item, fit_table
 import db
 import logic
@@ -13,23 +13,51 @@ REPORTS=['Class Schedules','Faculty Schedules','Section Schedules','Classroom Sc
 class ReportsPage(Page):
     def __init__(self,win):
         super().__init__(win)
-        self.add_header('MODULE 05','Timetable Generation and Reports','Generate, review, and export official schedules and academic utilization reports.',[
-            button('Print',slot=self.print_report),button('Export PDF',slot=self.export_pdf),button('Export CSV',slot=self.export_csv),button('Generate Timetable','primary',self.refresh)])
-        card=Card(); self.lay.addWidget(card); row=QHBoxLayout(); card.body(margins=(18,18,18,18)).addLayout(row)
+        self.add_header('MODULE 05','Reports & Timetables','Choose a report, review the saved records, and export what you need.',[
+            button('Print',slot=self.print_report),button('Export PDF',slot=self.export_pdf),button('Export CSV','primary',self.export_csv)])
+        card=Card('Report Type','Choose what you want to view'); self.lay.addWidget(card)
         self.report=Combo(); self.report.addItems(REPORTS); self.report.setCurrentIndex(2)
         self.program=Combo(); self.section=Combo(); self.faculty=Combo(); self.room=Combo()
-        for title,w in [('Report Type',self.report),('Program',self.program),('Section',self.section),('Faculty',self.faculty),('Classroom',self.room)]:
-            row.addWidget(labeled(title,w),1)
+        report_row=QHBoxLayout(); report_row.addWidget(labeled('Select report',self.report),1)
+        report_row.addStretch(2)
+        card.body(margins=(18,12,18,16)).addLayout(report_row)
+        self.filter_card=Card('Refine results','Only filters relevant to the chosen report appear here')
+        self.lay.addWidget(self.filter_card)
+        filter_row=QHBoxLayout()
+        self.filter_widgets={}
+        for key,title,w in [('program','Course / Program',self.program),('section','Section',self.section),('faculty','Faculty',self.faculty),('room','Classroom',self.room)]:
+            host=labeled(title,w)
+            filter_row.addWidget(host,1)
+            self.filter_widgets[key]=host
+        self.filter_card.body(margins=(18,12,18,16)).addLayout(filter_row)
         self.report.currentIndexChanged.connect(self.render); self.program.currentIndexChanged.connect(self.populate_sections)
         for w in [self.section,self.faculty,self.room]: w.currentIndexChanged.connect(self.render)
-        columns=QHBoxLayout(); self.lay.addLayout(columns)
-        self.main_card=Card('Weekly Timetable','Selected academic term'); columns.addWidget(self.main_card,5)
-        body=self.main_card.body(); self.calendar=CalendarWidget(); body.addWidget(self.calendar)
+        self.main_card=Card('Report Preview','Selected academic term'); self.lay.addWidget(self.main_card)
+        body=self.main_card.body(); self.calendar=CalendarWidget(step_minutes=30); body.addWidget(self.calendar)
         self.table=make_table(['Subject','Section','Faculty','Room','Day','Time']); body.addWidget(self.table)
         self.banner=Banner(); body.addWidget(self.banner)
-        right=QVBoxLayout(); columns.addLayout(right,1)
-        chart=Card('Room Utilization','Weekly occupancy rate'); self.chart=BarChart(); chart.body().addWidget(self.chart); right.addWidget(chart)
-        summary=Card('Schedule Summary'); self.summary=label('',wrap=True); summary.body().addWidget(self.summary); right.addWidget(summary); right.addStretch(); self.finish()
+        self.chart_card=Card('Room Utilization','Weekly occupancy rate across all classrooms')
+        self.chart=BarChart(); self.chart_card.body().addWidget(self.chart); self.lay.addWidget(self.chart_card)
+        self.summary_card=Card('Schedule Summary')
+        self.summary=label('',wrap=True); self.summary_card.body().addWidget(self.summary)
+        self.lay.addWidget(self.summary_card)
+        self.finish()
+
+    def _show_relevant_filters(self,mode):
+        relevant={
+            'Class Schedules': {'program','section','faculty','room'},
+            'Faculty Schedules': {'faculty'},
+            'Section Schedules': {'program','section'},
+            'Classroom Schedules': {'room'},
+            'Room Utilization': set(),
+            'Faculty Teaching Load': {'faculty'},
+            'Conflict Reports': set(),
+            'Available Rooms': {'room'},
+        }.get(mode,set())
+        self.filter_card.setVisible(bool(relevant))
+        for key,host in self.filter_widgets.items():
+            host.setVisible(key in relevant)
+        return relevant
 
     def refresh(self):
         for combo,sql,alltext in [(self.program,'SELECT id,name FROM programs ORDER BY code','All programs'),(self.faculty,'SELECT id,name FROM faculty ORDER BY name','All faculty'),(self.room,'SELECT id,name FROM classrooms ORDER BY name','All classrooms')]:
@@ -43,16 +71,21 @@ class ReportsPage(Page):
         pid=self.program.currentData()
         for r in db.rows('SELECT id,name FROM sections'+(' WHERE program_id=?' if pid else '')+' ORDER BY name',(pid,) if pid else ()):
             self.section.addItem(r['name'],r['id'])
-        self.section.setCurrentIndex(max(0,self.section.findData(keep)) if keep is not None else max(0,self.section.findText('BSCS 2A'))); self.section.blockSignals(False); self.render()
+        self.section.setCurrentIndex(max(0,self.section.findData(keep))); self.section.blockSignals(False); self.render()
 
     def render(self):
         if not hasattr(self,'calendar'): return
-        rows=logic.schedule_rows(self.win.term_id()); pid=self.program.currentData()
-        sections={r[0] for r in db.rows('SELECT id FROM sections WHERE program_id=?',(pid,))} if pid else None
+        rows=logic.schedule_rows(self.win.term_id())
         mode=self.report.currentText()
-        self.report_rows=[r for r in rows if (sections is None or r['section_id'] in sections) and (self.section.currentData() is None or r['section_id']==self.section.currentData()) and (self.faculty.currentData() is None or r['faculty_id']==self.faculty.currentData()) and (self.room.currentData() is None or r['room_id']==self.room.currentData())]
+        active=self._show_relevant_filters(mode)
+        pid=self.program.currentData() if 'program' in active else None
+        sections={r[0] for r in db.rows('SELECT id FROM sections WHERE program_id=?',(pid,))} if pid else None
+        sid=self.section.currentData() if 'section' in active else None
+        fid=self.faculty.currentData() if 'faculty' in active else None
+        rid=self.room.currentData() if 'room' in active else None
+        self.report_rows=[r for r in rows if (sections is None or r['section_id'] in sections) and (sid is None or r['section_id']==sid) and (fid is None or r['faculty_id']==fid) and (rid is None or r['room_id']==rid)]
         self.calendar.set_rows(self.report_rows,'section' if mode in ['Faculty Schedules','Classroom Schedules'] else 'room')
-        self.main_card.title_label.setText(mode+' — '+self.section.currentText())
+        self.main_card.title_label.setText(mode)
         self.main_card.subtitle.setText(self.win.term_name())
         self.headers=['Subject','Section','Faculty','Room','Day','Time']
         self.output=[[r['code'],r['section'],r['faculty'],r['room'],r['day'],f'{logic.fmt(r["start_min"])} – {logic.fmt(r["end_min"])}'] for r in self.report_rows]
@@ -72,14 +105,14 @@ class ReportsPage(Page):
         if mode=='Room Utilization':
             self.headers=['Day','Occupancy']; self.output=[[d,str(v)+'%'] for d,v in utilization]
         elif mode=='Faculty Teaching Load':
-            loads=logic.faculty_loads(self.win.term_id()); self.headers=['Faculty','Assigned Units','Maximum Units']; self.output=[[r['name'],loads.get(r['id'],0),r['max_units']] for r in db.rows('SELECT * FROM faculty') if self.faculty.currentData() is None or r['id']==self.faculty.currentData()]
+            loads=logic.faculty_loads(self.win.term_id()); self.headers=['Faculty','Assigned Units','Maximum Units']; self.output=[[r['name'],loads.get(r['id'],0),r['max_units']] for r in db.rows('SELECT * FROM faculty') if fid is None or r['id']==fid]
         elif mode=='Conflict Reports':
             self.headers=['Issue','Schedule','Description','Severity']; self.output=[[i['type'],i['label'],i['desc'],i['severity']] for i in logic.validate_term(self.win.term_id())['issues']]
         elif mode=='Available Rooms':
             self.headers=['Room','Capacity','Day','From','To']; self.output=[]
             from ui.availability import unavailable
             for room in db.rows('SELECT * FROM classrooms'):
-                if self.room.currentData() is not None and room['id']!=self.room.currentData(): continue
+                if rid is not None and room['id']!=rid: continue
                 for d,_ in db.DAYS:
                     for a,b,_ in logic.BLOCKS:
                         if not unavailable('room',room['id'],d,a,b) and not any(r['room_id']==room['id'] and r['day']==d and logic.overlap(a,b,r['start_min'],r['end_min']) for r in rows):
@@ -88,6 +121,8 @@ class ReportsPage(Page):
         for n,record in enumerate(self.output):
             for c,value in enumerate(record): self.table.setItem(n,c,text_item(value))
         fit_table(self.table); self.calendar.setVisible(mode in REPORTS[:4]); self.table.setVisible(mode not in REPORTS[:4])
+        self.chart_card.setVisible(mode=='Room Utilization')
+        self.summary_card.setVisible(mode in REPORTS[:4])
         validation=logic.validate_term(self.win.term_id())
         self.banner.title.setText('Resolve critical conflicts before using final timetables.' if validation['critical'] else 'Timetable validated. No critical conflicts detected.')
         self.banner.text.setText(f'{len(validation["issues"])} issues in this term. Export reflects current saved data.'); self.banner.text.show()

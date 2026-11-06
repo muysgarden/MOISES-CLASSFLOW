@@ -161,6 +161,29 @@ class SystemTests(unittest.TestCase):
         self.assertEqual(set(win.pages['schedules'].replace_ids), set(issue['edit_ids']))
         win.close()
 
+    def test_reports_show_only_relevant_filters(self):
+        win = MainWindow()
+        page = win.pages['reports']
+        page.refresh()
+        page.report.setCurrentText('Section Schedules')
+        app.processEvents()
+        self.assertFalse(page.filter_widgets['section'].isHidden())
+        self.assertFalse(page.filter_widgets['program'].isHidden())
+        self.assertTrue(page.filter_widgets['faculty'].isHidden())
+        self.assertEqual(page.section.currentData(), None)
+        page.section.setCurrentIndex(1)
+        section_id = page.section.currentData()
+        self.assertTrue(all(row['section_id'] == section_id for row in page.report_rows))
+
+        page.report.setCurrentText('Room Utilization')
+        self.assertTrue(page.filter_card.isHidden())
+        self.assertFalse(page.chart_card.isHidden())
+        self.assertEqual(len(page.report_rows), len(logic.schedule_rows(win.term_id())))
+        page.report.setCurrentText('Conflict Reports')
+        self.assertTrue(page.filter_card.isHidden())
+        self.assertFalse(page.table.isHidden())
+        win.close()
+
     def test_module_three_pagination_days_and_calendar(self):
         win = MainWindow()
         page = win.pages['schedules']

@@ -88,13 +88,17 @@ The conflict screen uses three color-coded **clickable** priority summaries inst
 
 The desktop interface uses **Segoe UI Variable** where installed (Windows 11), falling back to **Segoe UI** on earlier Windows versions. Display headings have lighter, calmer weights, and navigation labels, table headers, and field captions use readable sizes. No internet download or external font installation is required. Concept illustrations generated on non-Windows machines may use a substitute font; the running application uses the configured Windows typeface.
 
+## Phase 6: Reports & Timetables (Module 5)
+
+The report screen now starts with a **Report Type** selector and shows a second filter card only when the chosen report actually needs filters: Section Schedules uses course/program and section; Faculty Schedules and Teaching Load use faculty; Classroom Schedules and Available Rooms use classroom; Class Schedules can use all four. Room Utilization and Conflict Reports do not show irrelevant filters. Switching report types does not silently keep applying filters from a hidden category. The preview has the full workspace width, and room-utilization charts appear only with the corresponding report. Timetable displays use 30-minute grid markers. The old **Generate Timetable** button was removed because it only refreshed existing assignments; changing the report or filters refreshes the preview automatically. Print, PDF and CSV export remain available.
+
 ## Modules
 
 1. **Academic Data Management** — add, edit, delete, search, and filter programs, sections, subjects, faculty, classrooms, academic terms, and school periods. In-use records are protected from deletion.
 2. **Faculty and Room Availability** — find available resources by day/time/type; view teaching loads and actual weekly availability blocks. Mark resource unavailability, or clear its saved windows. The three daily grid blocks are 8 AM–12 PM, 1 PM–5 PM, and 5 PM–8 PM. Unavailability preferences apply across academic terms.
 3. **Schedule Management** — assign a subject, section, faculty member, room, days, and start/end time. Preview conflicts before saving, edit/delete assignments, search, and view section calendars. Critical conflicts block saving; warnings require confirmation.
 4. **Conflict Detection and Validation** — detect faculty/room/section overlaps, room-capacity problems, excessive teaching loads, invalid school times, and unavailable resources. Filter results and open an affected assignment with Edit.
-5. **Timetable Generation and Reports** — generate views from saved assignments, filter by program/section/faculty/room, view actual room utilization, faculty loads, conflict reports, and available rooms. Export PDF or CSV and use the system print dialog. Generate Timetable refreshes a timetable from assignments; it does not automatically assign unscheduled classes.
+5. **Timetable Generation and Reports** — view saved assignments by section, faculty or classroom; inspect utilization, teaching loads, conflicts and available rooms; export PDF or CSV or print. These reports summarize saved data and do not automatically assign classes.
 
 ## Verification
 

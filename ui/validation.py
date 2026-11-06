@@ -167,10 +167,10 @@ class ValidationPage(Page):
         self.visible_issues = issues
         for severity, card in self.priority_cards.items():
             active = self.active_priority == severity
-            foreground, background, outline = PRIORITY_COLORS[severity]
+            _foreground, _background, outline = PRIORITY_COLORS[severity]
             card.setStyleSheet(
                 f"QFrame#priorityCard {{border: {2 if active else 1}px solid {outline}; "
-                f"background: {background if active else '#FFFFFF'}; border-radius: 12px;}}"
+                "background: #FFFFFF; border-radius: 12px;}"
             )
         self.results.subtitle.setText(
             f"Showing {len(issues)} of {len(self.result['issues'])} issues · Click a row for details"
