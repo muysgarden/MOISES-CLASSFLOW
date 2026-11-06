@@ -74,6 +74,12 @@ Blocked periods are listed in a readable **Blocked Time Records** table with Fac
 
 In the blocked-time editor, **From** and **Until** offer 15-minute dropdown suggestions but also accept an exact typed time such as `8:17 AM` or `1:45 PM`. Invalid times, reversed ranges, and overlapping blocked windows are rejected. An optional **Reason** (for example, Faculty meeting or Room maintenance) is saved with the unavailable period and displayed alongside it; existing databases are upgraded without losing their earlier blocked times.
 
+## Phase 4: Class Schedules (Module 3)
+
+The class assignment form is hidden until the administrator clicks **New Schedule** or **Edit**, giving the saved schedules table the full workspace by default. The form uses two readable rows of inputs; subject, section, faculty, classroom and class-day selection fields support typing and matching suggestions without accepting unknown records. New forms begin unselected. Time fields use the same 15-minute suggestions and exact-time parsing as Module 2. Validation and conflict feedback appear directly under the form before saving.
+
+**Saved Schedules** and **Weekly Calendar** are now separate views. The calendar starts with **Choose section** so unrelated classes do not overlap visually; selecting a section displays its actual timetable. Saved schedules remain editable and deletable with the original safeguards.
+
 ## Modules
 
 1. **Academic Data Management** — add, edit, delete, search, and filter programs, sections, subjects, faculty, classrooms, academic terms, and school periods. In-use records are protected from deletion.

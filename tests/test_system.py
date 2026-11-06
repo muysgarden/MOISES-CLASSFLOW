@@ -231,6 +231,25 @@ class SystemTests(unittest.TestCase):
 
     def test_schedule_editor_create_edit_delete(self):
         win=MainWindow(); page=win.pages['schedules']; page.refresh()
+        self.assertTrue(page.editor.isHidden())
+        self.assertIsNone(page.section.currentData())
+        self.assertEqual(page.calendar_card.subtitle.text(), 'Choose a section to see its timetable')
+        page.new_schedule()
+        self.assertFalse(page.editor.isHidden())
+        self.assertIsNone(page.values()['subject_id'])
+        self.assertTrue(page.fields['subject_id'].isEditable())
+        self.assertTrue(page.fields['start'].isEditable())
+        page.fields['start'].setEditText('8:17 AM')
+        self.assertEqual(page.values()['start'], 8*60+17)
+        page.fields['faculty_id'].setEditText('unknown faculty')
+        self.assertIsNone(page.values()['faculty_id'])
+        before = db.row('SELECT COUNT(*) FROM schedules')[0]
+        page.save()
+        self.assertEqual(db.row('SELECT COUNT(*) FROM schedules')[0], before)
+        for key, table in [('subject_id', 'subjects'), ('section_id', 'sections'),
+                           ('faculty_id', 'faculty'), ('room_id', 'classrooms')]:
+            record = db.row(f'SELECT id FROM {table} ORDER BY id LIMIT 1')
+            page.fields[key].setCurrentIndex(page.fields[key].findData(record['id']))
         for key,value in [('days','Sat'),('start',780),('end',840)]:
             page.fields[key].setCurrentIndex(page.fields[key].findData(value))
         before=db.row('SELECT COUNT(*) FROM schedules')[0]
