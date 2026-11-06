@@ -333,11 +333,6 @@ QPushButton#nav:hover { background: $nav_hover; }
 QPushButton#nav:checked, QPushButton#nav:checked:hover { background: $gradient; border: none; }
 #sidebar QPushButton#nav QLabel { color: #52627A; font-size: 13px; }
 #sidebar QPushButton#nav:checked QLabel { color: #FFFFFF; font-weight: 700; }
-#sidebar QPushButton#nav QLabel#activeTag {
-    background: rgba(255,255,255,0.19); color: white;
-    border: 1px solid rgba(255,255,255,0.25);
-    border-radius: 10px; font-size: 10px; padding: 3px 7px;
-}
 #sidebar #brandSub { color: $muted; }
 #sidebarProfile { background: #F8FAFD; border-top: 1px solid $border; border-radius: 10px; }
 #userName { color: $ink; font-size: 12px; font-weight: 700; }

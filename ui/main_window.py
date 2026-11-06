@@ -149,16 +149,13 @@ class NavButton(QPushButton):
         h.setSpacing(12)
         self.icon = SidebarIcon(icon)
         t = label(text)
-        self.active_label = label("Active", "activeTag")
-        self.active_label.setVisible(False)
-        for w in (self.icon, t, self.active_label):
+        for w in (self.icon, t):
             w.setAttribute(Qt.WA_TransparentForMouseEvents)
         self._text = t
         self.toggled.connect(self._restyle)
         self._restyle(False)
         h.addWidget(self.icon)
         h.addWidget(t, 1)
-        h.addWidget(self.active_label)
 
     def _restyle(self, checked):
         f = self._text.font()
@@ -168,9 +165,6 @@ class NavButton(QPushButton):
         # the checked-state QSS palette even after their parent is unchecked.
         self._text.setStyleSheet("color: #FFFFFF;" if checked else "color: #52627A;")
         self.icon.set_active(checked)
-        # Keep navigation labels fully visible; the badge only fits the short
-        # Dashboard entry. Other modules are highlighted by the gradient.
-        self.active_label.setVisible(checked and self._text.text() == "Dashboard")
 
 
 class MainWindow(QMainWindow):

@@ -48,6 +48,8 @@ class SystemTests(unittest.TestCase):
         win.show(); app.processEvents()
         self.assertEqual(win.stack.currentWidget(), win.pages['dashboard'])
         self.assertEqual(win.profile_name.text(), 'Moises')
+        self.assertTrue(win.nav_btns['dashboard'].isChecked())
+        self.assertFalse(hasattr(win.nav_btns['dashboard'], 'active_label'))
         dash = win.pages['dashboard']
         count = db.row('SELECT COUNT(*) FROM faculty')[0]
         self.assertEqual(dash.metrics['faculty'].text(), f'{count:,}')
