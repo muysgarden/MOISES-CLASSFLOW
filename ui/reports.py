@@ -32,7 +32,7 @@ class ReportsPage(Page):
             self.filter_widgets[key]=host
         report_row.addWidget(self.filter_card,2)
         card.body(margins=(18,12,18,12)).addLayout(report_row)
-        self.report.currentIndexChanged.connect(self.render); self.program.currentIndexChanged.connect(self.populate_sections)
+        self.report.currentIndexChanged.connect(self._report_changed); self.program.currentIndexChanged.connect(self.populate_sections)
         for w in [self.section,self.faculty,self.room]: w.currentIndexChanged.connect(self.render)
         self.main_card=Card('Report Preview','Selected academic term'); self.lay.addWidget(self.main_card)
         body=self.main_card.body(); self.calendar=CalendarWidget(step_minutes=30); body.addWidget(self.calendar)
@@ -44,6 +44,14 @@ class ReportsPage(Page):
         self.summary=label('',wrap=True); self.summary_card.body().addWidget(self.summary)
         self.lay.addWidget(self.summary_card)
         self.finish()
+
+    def _report_changed(self, *_):
+        # Default to all records when changing report types; filters remain optional.
+        for combo in (self.program,self.section,self.faculty,self.room):
+            combo.blockSignals(True)
+            combo.setCurrentIndex(0)
+            combo.blockSignals(False)
+        self.render()
 
     def _show_relevant_filters(self,mode):
         relevant={
@@ -86,9 +94,16 @@ class ReportsPage(Page):
         fid=self.faculty.currentData() if 'faculty' in active else None
         rid=self.room.currentData() if 'room' in active else None
         self.report_rows=[r for r in rows if (sections is None or r['section_id'] in sections) and (sid is None or r['section_id']==sid) and (fid is None or r['faculty_id']==fid) and (rid is None or r['room_id']==rid)]
+        # All-class and all-faculty views contain overlapping unrelated groups;
+        # display the assignment list until a specific faculty member is chosen.
+        grid_mode=mode in ('Section Schedules','Classroom Schedules') or (mode=='Faculty Schedules' and fid is not None)
         self.calendar.set_rows(self.report_rows,'section' if mode in ['Faculty Schedules','Classroom Schedules'] else 'room')
         self.main_card.title_label.setText(mode)
-        self.main_card.subtitle.setText(self.win.term_name())
+        selected=(self.faculty.currentText() if mode=='Faculty Schedules' and fid is not None
+                  else self.section.currentText() if mode=='Section Schedules' and sid is not None
+                  else self.room.currentText() if mode=='Classroom Schedules' and rid is not None
+                  else 'All records')
+        self.main_card.subtitle.setText(self.win.term_name()+' · '+selected)
         self.headers=['Subject','Section','Faculty','Room','Day','Time']
         self.output=[[r['code'],r['section'],r['faculty'],r['room'],r['day'],f'{logic.fmt(r["start_min"])} – {logic.fmt(r["end_min"])}'] for r in self.report_rows]
         room_count=db.row('SELECT COUNT(*) FROM classrooms')[0]
@@ -122,7 +137,7 @@ class ReportsPage(Page):
         self.table.setColumnCount(len(self.headers)); self.table.setHorizontalHeaderLabels([h.upper() for h in self.headers]); self.table._flex_weights={i:1 for i in range(len(self.headers))}; self.table.setRowCount(len(self.output))
         for n,record in enumerate(self.output):
             for c,value in enumerate(record): self.table.setItem(n,c,text_item(value))
-        fit_table(self.table); self.calendar.setVisible(mode in REPORTS[:4]); self.table.setVisible(mode not in REPORTS[:4])
+        fit_table(self.table); self.calendar.setVisible(grid_mode); self.table.setVisible(not grid_mode)
         self.chart_card.setVisible(mode=='Room Utilization')
         self.summary_card.setVisible(mode in REPORTS[:4])
         validation=logic.validate_term(self.win.term_id())
@@ -260,6 +275,7 @@ class ReportsPage(Page):
                         for r in conflicts:
                             blocks.append(
                                 f'<b>{esc(r["code"])}</b><br/>'
+                                f'Section: {esc(r["section"])}<br/>'
                                 f'{esc(r["faculty"])}<br/>'
                                 f'{esc(r["room"])}<br/>'
                                 f'({esc(r["subject_type"])})'
@@ -280,14 +296,15 @@ class ReportsPage(Page):
                 +'</tr></thead><tbody>'+''.join(cells)+'</tbody></table>'
             )
             pages.append(
-                f'<div class="meta">{self._group_details(group_name,rows)}</div>'
+                self._official_heading('CLASS SCHEDULE')
+                +'<div class="report-name">'+esc(self.report.currentText())+'</div>'
+                +f'<div class="meta">{self._group_details(group_name,rows)}</div>'
                 +table+self._print_footer()
             )
         return (
             '<html><head><style>'+self._print_styles()+'</style></head><body>'
-            +self._official_heading('CLASS SCHEDULE')
-            +'<div style="font-size:8pt;color:#586174;">'+esc(self.report.currentText())+'</div>'
-            +'<hr/>'.join(pages)+'</body></html>'
+            +'<div style="page-break-after:always;"></div>'.join(pages)
+            +'</body></html>'
         )
 
     def _table_report_html(self):
