@@ -301,10 +301,9 @@ class ReportsPage(Page):
                 room_kind = "LAB" if row["room_type"] == "Laboratory" else "LEC"
                 blocks.append(
                     f"<b>{esc(row['code'])} · {esc(row['section'])}</b><br>"
-                    f"{esc(row['faculty'])}<br>"
-                    f"{esc(row['room'])} ({room_kind})"
+                    f"{esc(row['faculty'])} · {esc(row['room'])} ({room_kind})"
                 )
-            return "<hr>".join(blocks)
+            return "<br>".join(blocks)
 
         head = (
             '<table width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse; margin-bottom:8px;">'
@@ -319,7 +318,7 @@ class ReportsPage(Page):
         )
         table = (
             '<table width="100%" border="1" cellspacing="0" cellpadding="2" style="border-collapse:collapse; table-layout:fixed;">'
-            '<tr style="background-color:#D9EAF7;"><th width="12%" nowrap="nowrap" style="padding:6px; text-align:center;">PERIOD</th>'
+            '<tr style="background-color:#D9EAF7;"><th width="17%" nowrap="nowrap" style="padding:6px; text-align:center;">PERIOD</th>'
             + "".join(f'<th nowrap="nowrap" style="padding:6px; text-align:center;">{esc(name.upper())}</th>' for _, name in db.DAYS)
             + "</tr>"
         )
@@ -328,7 +327,7 @@ class ReportsPage(Page):
             minute = logic.CAL_START + slot * slot_minutes
             next_minute = minute + slot_minutes
             cells = [
-                f'<td height="18" align="center" nowrap="nowrap">{esc(logic.fmt(minute))}–{esc(logic.fmt(next_minute))}</td>'
+                f'<td height="20" align="center" nowrap="nowrap">{esc(logic.fmt(minute))} - {esc(logic.fmt(next_minute))}</td>'
             ]
             for day, _ in db.DAYS:
                 component = day_cells[day].get(slot)
@@ -337,13 +336,13 @@ class ReportsPage(Page):
                     active_until[day] = component["end"]
                     content = block_text(component["rows"])
                     cells.append(
-                        f'<td rowspan="{span}" height="{max(18 * span, 36 * len(component["rows"]))}" '
+                        f'<td rowspan="{span}" height="{20 * span}" '
                         f'bgcolor="#ffffff" align="center" valign="middle">'
-                        f'<font size="2" color="#000000">{content}</font></td>'
+                        f'<font size="1" color="#000000">{content}</font></td>'
                     )
                 elif slot >= active_until[day]:
                     cells.append("<td></td>")
-            table += "<tr>" + "".join(cells) + "</tr>"
+            table += '<tr height="20">' + "".join(cells) + "</tr>"
         return head + table + "</table>"
 
     def room_utilization_html(self, all_rooms=False):
@@ -488,7 +487,7 @@ class ReportsPage(Page):
     def print_schedule_pdf(self, printer, document):
         printer.setPaperSize(QPrinter.A4)
         printer.setOrientation(QPrinter.Landscape)
-        printer.setPageMargins(8, 8, 8, 8, QPrinter.Millimeter)
+        printer.setPageMargins(0, 0, 0, 0, QPrinter.Millimeter)
         page = printer.pageRect(QPrinter.Point)
         document.setTextWidth(page.width())
         frames = [document.rootFrame()]
@@ -498,10 +497,14 @@ class ReportsPage(Page):
                 if isinstance(child, QTextTable) and child.columns() == len(db.DAYS) + 1:
                     table_format = child.format()
                     table_format.setWidth(QTextLength(QTextLength.PercentageLength, 100))
+                    time_column_width = 17
                     table_format.setColumnWidthConstraints(
-                        [QTextLength(QTextLength.PercentageLength, 12)]
+                        [QTextLength(QTextLength.PercentageLength, time_column_width)]
                         + [
-                            QTextLength(QTextLength.PercentageLength, 88 / len(db.DAYS))
+                            QTextLength(
+                                QTextLength.PercentageLength,
+                                (100 - time_column_width) / len(db.DAYS),
+                            )
                             for _ in db.DAYS
                         ]
                     )

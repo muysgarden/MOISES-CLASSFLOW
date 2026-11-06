@@ -270,7 +270,12 @@ class SystemTests(unittest.TestCase):
         self.assertIn('>MONDAY</th>',sheet)
         self.assertIn('BSCS 2A',sheet)
         self.assertIn('2nd year',sheet)
-        self.assertEqual(sheet.count('<td height="18" align="center" nowrap="nowrap">'),26)
+        self.assertIn(
+            f'{logic.fmt(logic.CAL_START)} - {logic.fmt(logic.CAL_START + 30)}',
+            sheet,
+        )
+        self.assertEqual(sheet.count('<td height="20" align="center" nowrap="nowrap">'),26)
+        self.assertEqual(sheet.count('<tr height="20">'),26)
         self.assertIn('rowspan=',sheet)
         for row in reports.report_rows:
             for key in ('code','section','faculty','room'):
@@ -291,7 +296,7 @@ class SystemTests(unittest.TestCase):
             printer.pageRect(QPrinter.Point).width()*0.95,
         )
         column_widths=[width.value(100) for width in grid.format().columnWidthConstraints()]
-        self.assertAlmostEqual(column_widths[0],12)
+        self.assertAlmostEqual(column_widths[0],17)
         self.assertTrue(all(abs(width-column_widths[1])<0.01 for width in column_widths[1:]))
         # Capture each actual UI for visual inspection.
         for key in win.pages:
