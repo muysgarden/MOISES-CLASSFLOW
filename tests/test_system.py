@@ -3,7 +3,7 @@ os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 import unittest
 from unittest.mock import patch
 import tempfile
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QFrame
 from PyQt5.QtPrintSupport import QPrinter
 from PyQt5.QtTest import QTest
 from PyQt5.QtCore import Qt
@@ -53,6 +53,8 @@ class SystemTests(unittest.TestCase):
         self.assertEqual(dash.metrics['faculty'].text(), f'{count:,}')
         self.assertEqual(dash.metrics['assignments'].text(),
                          str(len(logic.group_rows(logic.schedule_rows(win.term_id())))))
+        self.assertEqual(len(win.findChildren(QFrame, 'progressCard')), 0)
+        self.assertEqual(dash.progress.value(), logic.progress(win.term_id()))
 
         faculty = db.row('SELECT id, name FROM faculty ORDER BY name LIMIT 1')
         results = win._search_results(faculty['name'][:6])

@@ -11,9 +11,8 @@ import importlib
 
 from ui.placeholder import PlaceholderPage
 from ui.academic import ENTITIES
-from ui.widgets import Bar, label, set_kind
+from ui.widgets import label, set_kind
 from ui.dashboard import DashboardPage
-from ui.theme import COLORS
 
 PAGE_CLASSES = {
     "academic": "AcademicPage", "availability": "AvailabilityPage", "schedules": "SchedulesPage",
@@ -270,23 +269,6 @@ class MainWindow(QMainWindow):
             v.addWidget(b)
         v.addStretch()
 
-        card = QFrame()
-        card.setObjectName("progressCard")
-        cv = QVBoxLayout(card)
-        cv.setContentsMargins(13, 13, 13, 13)
-        cv.setSpacing(6)
-        top = QHBoxLayout()
-        top.addWidget(label("Schedule coverage", "progressTitle"))
-        self.progress_pct = label("0%", "progressPct")
-        top.addStretch()
-        top.addWidget(self.progress_pct)
-        cv.addLayout(top)
-        self.progress_bar = Bar(0, COLORS["blue"])
-        cv.addWidget(self.progress_bar)
-        self.progress_term = label("", "brandSub")
-        cv.addWidget(self.progress_term)
-        v.addWidget(card)
-        v.addSpacing(9)
         footer = QFrame()
         footer.setObjectName("sidebarProfile")
         profile = QHBoxLayout(footer)
@@ -395,28 +377,15 @@ class MainWindow(QMainWindow):
             page.open(**kw)
         else:
             page.refresh()
-        self.update_progress()
 
     def refresh_current(self):
         page = self.stack.currentWidget()
         if page is not None:
             page.refresh()
-        self.update_progress()
 
     def data_changed(self):
         self.reload_terms()
-        self.update_progress()
-        if self.stack.currentWidget() != self.pages["dashboard"]:
-            self.pages["dashboard"].refresh()
-
-    def update_progress(self):
-        if self.term_combo.currentData() is None:
-            return
-        pct = logic.progress(self.term_combo.currentData())
-        self.progress_pct.setText(f"{pct}%")
-        self.progress_bar.value = pct
-        self.progress_bar.update()
-        self.progress_term.setText(self.term_name())
+        self.pages["dashboard"].refresh()
 
     def _global_search(self):
         query = self.search.text().strip()

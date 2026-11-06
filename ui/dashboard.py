@@ -162,6 +162,7 @@ class DashboardPage(QScrollArea):
         health_head.addWidget(self.health_status)
         health_body.addLayout(health_head)
         self.health_summary = text("", "healthSummary")
+        self.health_summary.setWordWrap(True)
         health_body.addWidget(self.health_summary)
         self.progress = QProgressBar()
         self.progress.setObjectName("healthProgress")
@@ -254,6 +255,14 @@ class DashboardPage(QScrollArea):
 
         pct = logic.progress(term_id)
         self.progress.setValue(pct)
+        required = db.row(
+            "SELECT COUNT(*) FROM sections sec "
+            "JOIN subject_programs sp ON sp.program_id = sec.program_id"
+        )[0]
+        completed = db.row(
+            "SELECT COUNT(*) FROM (SELECT DISTINCT section_id, subject_id "
+            "FROM schedules WHERE term_id=?)", (term_id,)
+        )[0]
         used_rooms = db.row(
             "SELECT COUNT(DISTINCT room_id) FROM schedules WHERE term_id=?", (term_id,)
         )[0]
@@ -261,7 +270,7 @@ class DashboardPage(QScrollArea):
             "Needs attention" if validation["critical"] else "No critical conflicts"
         )
         self.health_summary.setText(
-            f"{pct}% of planned section-subject assignments scheduled  ·  "
+            f"{completed} of {required} required class assignments scheduled ({pct}%)  ·  "
             f"{used_rooms} of {counts['rooms']} rooms in use  ·  "
             f"{validation['critical']} critical conflicts"
         )

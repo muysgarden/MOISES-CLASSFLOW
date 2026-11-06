@@ -338,9 +338,6 @@ QPushButton#nav:checked, QPushButton#nav:checked:hover { background: $gradient; 
     border: 1px solid rgba(255,255,255,0.25);
     border-radius: 10px; font-size: 10px; padding: 3px 7px;
 }
-#progressCard { background: #F6F8FF; border: 1px solid $border; border-radius: 11px; }
-#progressTitle { color: $ink; font-weight: 650; }
-#progressPct { color: $deep_blue; font-size: 13px; font-weight: 700; }
 #sidebar #brandSub { color: $muted; }
 #sidebarProfile { background: #F8FAFD; border-top: 1px solid $border; border-radius: 10px; }
 #userName { color: $ink; font-size: 12px; font-weight: 700; }
