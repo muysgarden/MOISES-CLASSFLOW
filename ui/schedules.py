@@ -192,9 +192,11 @@ class SchedulesPage(Page):
         calendar_page = QWidget()
         calendar_layout = QVBoxLayout(calendar_page)
         calendar_layout.setContentsMargins(0, 10, 0, 0)
-        self.section = Combo()
-        self.section.addItem("Choose section…", None)
+        self.section = searchable()
+        self.section.setMinimumWidth(185)
+        self.section.lineEdit().setPlaceholderText("Search section…")
         self.section.currentIndexChanged.connect(self.render_calendar)
+        self.section.lineEdit().textEdited.connect(self.render_calendar)
         calendar_card = Card(
             "Weekly Calendar", "Choose a section to see its timetable",
             right=[self.section],
@@ -235,13 +237,15 @@ class SchedulesPage(Page):
             else:
                 self._clear_combo(combo)
             combo.blockSignals(False)
-        keep = self.section.currentData()
+        keep = self._lookup_value(self.section)
         self.section.blockSignals(True)
         self.section.clear()
-        self.section.addItem("Choose section…", None)
         for record in db.rows("SELECT id,name FROM sections ORDER BY name"):
             self.section.addItem(record["name"], record["id"])
-        self.section.setCurrentIndex(max(0, self.section.findData(keep)))
+        if keep is not None and self.section.findData(keep) >= 0:
+            self.section.setCurrentIndex(self.section.findData(keep))
+        else:
+            self._clear_combo(self.section)
         self.section.blockSignals(False)
         keep_list = self.list_section.currentData()
         self.list_section.blockSignals(True)
@@ -425,7 +429,7 @@ class SchedulesPage(Page):
         self.render_calendar()
 
     def render_calendar(self, *_):
-        selected = self.section.currentData()
+        selected = self._lookup_value(self.section)
         self.calendar_card.subtitle.setText(
             "Choose a section to see its timetable" if selected is None
             else f"Weekly timetable for {self.section.currentText()}"

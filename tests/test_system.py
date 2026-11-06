@@ -159,6 +159,12 @@ class SystemTests(unittest.TestCase):
         page.section.setCurrentIndex(1)
         self.assertIsNotNone(page.section.currentData())
         page.render_calendar()
+        page.section.setEditText('not a real section')
+        page.render_calendar()
+        self.assertEqual(page.calendar.rows, [])
+        page.section.setEditText(page.section.itemText(0))
+        page.render_calendar()
+        self.assertTrue(page.calendar.rows)
         win.close()
 
     def test_availability_and_persistence(self):
