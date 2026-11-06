@@ -66,10 +66,8 @@ class AvailabilityPage(Page):
                 background: white; border: 1px solid #DDE6F4; border-radius: 8px;
                 padding: 8px 10px; min-height: 27px; }
         """)
-        self.add_header(
-            "MODULE 02", "Faculty & Room Availability",
-            "See who and what is free for the exact day and time you choose."
-        )
+        # The main top bar already identifies this module. Avoid a second
+        # oversized title that pushes availability cards below short screens.
         self._build_filters()
         self._build_results()
         self._build_editor()
@@ -86,9 +84,9 @@ class AvailabilityPage(Page):
         panel = QFrame()
         panel.setObjectName("availPanel")
         outer = QVBoxLayout(panel)
-        outer.setContentsMargins(21, 17, 21, 19)
-        outer.setSpacing(12)
-        outer.addWidget(self._label("Check availability", "availHeading"))
+        outer.setContentsMargins(19, 12, 19, 13)
+        outer.setSpacing(7)
+        outer.addWidget(self._label("Find available faculty & classrooms", "availHeading"))
         row = QHBoxLayout()
         row.setSpacing(12)
         self.day = Combo()
@@ -135,8 +133,8 @@ class AvailabilityPage(Page):
         for index in range(2):
             widget = self.tabs.widget(index)
             layout = QVBoxLayout(widget)
-            layout.setContentsMargins(0, 8, 0, 12)
-            layout.setSpacing(12)
+            layout.setContentsMargins(0, 3, 0, 4)
+            layout.setSpacing(7)
             head = QHBoxLayout()
             headline = self._label("", "availHeading")
             counter = self._label("", "availCount")
@@ -152,7 +150,7 @@ class AvailabilityPage(Page):
                 layout.addLayout(filter_row)
             grid = QGridLayout()
             grid.setHorizontalSpacing(13)
-            grid.setVerticalSpacing(13)
+            grid.setVerticalSpacing(8)
             layout.addLayout(grid)
             empty = self._label("")
             layout.addWidget(empty)
@@ -317,8 +315,8 @@ class AvailabilityPage(Page):
         card = QFrame()
         card.setObjectName("availItem")
         v = QVBoxLayout(card)
-        v.setContentsMargins(17, 16, 17, 16)
-        v.setSpacing(10)
+        v.setContentsMargins(14, 10, 14, 10)
+        v.setSpacing(5)
         top = QHBoxLayout()
         name = self._label(record["name"], "availName")
         name.setWordWrap(True)
