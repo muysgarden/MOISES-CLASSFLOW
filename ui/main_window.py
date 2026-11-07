@@ -175,7 +175,7 @@ class MainWindow(QMainWindow):
         self.username = username
         self.setWindowTitle("ClassFlow — College of Computer Studies Scheduler")
         self.resize(1440, 860)
-        self.setMinimumSize(1100, 680)
+        self.setMinimumSize(860, 560)
         self._msg_token = 0
 
         central = QWidget()
@@ -225,7 +225,7 @@ class MainWindow(QMainWindow):
     def _build_sidebar(self):
         side = QFrame()
         side.setObjectName("sidebar")
-        side.setFixedWidth(252)
+        side.setFixedWidth(218)
         v = QVBoxLayout(side)
         v.setContentsMargins(15, 22, 15, 16)
         v.setSpacing(9)
@@ -321,7 +321,7 @@ class MainWindow(QMainWindow):
         self.search.setObjectName("globalSearch")
         self.search.setPlaceholderText("⌕  Search subjects, faculty, rooms, schedules…")
         self.search.setClearButtonEnabled(True)
-        self.search.setMinimumWidth(265)
+        self.search.setMinimumWidth(160)
         self.search.setMaximumWidth(365)
         self.search.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.search.returnPressed.connect(self._global_search)
@@ -340,7 +340,7 @@ class MainWindow(QMainWindow):
         h.addWidget(self.search)
         self.term_combo = QComboBox()
         self.term_combo.setObjectName("termSelector")
-        self.term_combo.setMinimumWidth(200)
+        self.term_combo.setMinimumWidth(155)
         self.term_combo.setMaximumWidth(240)
         self.term_combo.setToolTip("Active academic term")
         self.term_combo.currentIndexChanged.connect(self._term_changed)
