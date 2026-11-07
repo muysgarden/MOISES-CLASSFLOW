@@ -360,16 +360,11 @@ class MainWindow(QMainWindow):
         self.term_combo.blockSignals(False)
 
     def term_id(self):
-        tid = self.term_combo.currentData()
-        if tid is None:  # brand-new empty database
-            with db.conn:
-                db.conn.execute("INSERT OR IGNORE INTO terms(name, is_current) VALUES('1st Semester, A.Y. 2025–2026', 1)")
-            self.reload_terms()
-            tid = self.term_combo.currentData()
-        return tid
+        # Never inject a fake academic term into a newly created dataset.
+        return self.term_combo.currentData()
 
     def term_name(self):
-        return self.term_combo.currentText()
+        return self.term_combo.currentText() or "No academic term selected"
 
     def _term_changed(self):
         self.refresh_current()
