@@ -13,7 +13,13 @@ def main():
     app=QApplication(sys.argv)
     app.setApplicationName('ClassFlow')
     app.setStyleSheet(build_qss())
-    db.init(active_workspace_path()); auth.init(); init_availability()
+    try:
+        db.init(active_workspace_path())
+    except (OSError, ValueError) as exc:
+        QMessageBox.critical(None, "Cannot open ClassFlow dataset", str(exc))
+        return 1
+    auth.init()
+    init_availability()
     # No destructive reset flag: existing records are never silently erased.
     login = LoginDialog()
     if login.exec_()!=QDialog.Accepted:
