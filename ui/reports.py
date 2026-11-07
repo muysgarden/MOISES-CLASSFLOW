@@ -1,10 +1,10 @@
 import html
+import csv
 import re
 from pathlib import Path
 from PyQt5.QtCore import QStandardPaths, QRectF
 from PyQt5.QtGui import QPainter, QTextDocument, QTextLength, QTextTable
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
-from PyQt5.QtWidgets import QHBoxLayout, QWidget, QFileDialog
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QFileDialog
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -13,7 +13,9 @@ from ui.widgets import Page, Card, Combo, CalendarWidget, BarChart, Banner, butt
 import db
 import logic
 
-REPORTS=['Class Schedules','Faculty Schedules','Section Schedules','Room Utilization Schedule','Room Utilization','Faculty Teaching Load','Conflict Reports','Available Rooms']
+REPORTS=['Class Schedules','Faculty Schedules','Section Schedules','Classroom Schedules','Room Utilization Schedule','Room Utilization','Faculty Teaching Load','Conflict Reports','Available Rooms']
+TIMETABLE_REPORTS=('Class Schedules','Faculty Schedules','Section Schedules','Classroom Schedules')
+EXPORTABLE_SCHEDULES=TIMETABLE_REPORTS+('Room Utilization Schedule',)
 YEAR_LEVEL_COLORS = {
     1: 'FCE4D6',
     2: 'FFF2CC',
@@ -38,268 +40,329 @@ def year_level_label(number):
 class ReportsPage(Page):
     def __init__(self,win):
         super().__init__(win)
-        self.add_header('MODULE 05','Reports & Timetables','Choose a report, review the saved records, and export what you need.',[
-            button('Print',slot=self.print_report),button('Export PDF',slot=self.export_pdf),button('Export CSV','primary',self.export_csv)])
-        # One compact filter bar keeps the timetable near the top of the page.
-        card=Card(); self.lay.addWidget(card)
-        self.report=Combo(); self.report.addItems(REPORTS); self.report.setCurrentIndex(2)
-        self.program=Combo(); self.section=Combo(); self.faculty=Combo(); self.room=Combo()
-        report_row=QHBoxLayout(); report_row.setSpacing(14)
-        report_row.addWidget(labeled('Report Type',self.report),1)
-        self.filter_card=QWidget()
-        filter_row=QHBoxLayout(self.filter_card)
-        filter_row.setContentsMargins(0,0,0,0)
-        filter_row.setSpacing(14)
-        self.filter_widgets={}
-        for key,title,w in [('program','Program',self.program),('section','Section',self.section),('faculty','Faculty',self.faculty),('room','Classroom',self.room)]:
-            host=labeled(title,w)
-            filter_row.addWidget(host,1)
-            self.filter_widgets[key]=host
-        report_row.addWidget(self.filter_card,2)
-        card.body(margins=(18,12,18,12)).addLayout(report_row)
-        self.report.currentIndexChanged.connect(self._report_changed); self.program.currentIndexChanged.connect(self.populate_sections)
         self.excel_button=button('Export Excel',slot=self.export_excel)
-        self.add_header('MODULE 05','Timetable Generation and Reports','Generate, review, and export official schedules and academic utilization reports.',[
-            button('Print',slot=self.print_report),button('Export PDF',slot=self.export_pdf),self.excel_button])
-        card=Card(); self.lay.addWidget(card); row=QHBoxLayout(); card.body(margins=(18,18,18,18)).addLayout(row)
-        self.report=Combo(); self.report.addItems(REPORTS); self.report.setCurrentIndex(3)
-        self.program=Combo(); self.section=Combo(); self.faculty=Combo(); self.room=Combo()
-        for title,w in [('Report Type',self.report),('Program',self.program),('Section',self.section),('Faculty',self.faculty),('Classroom',self.room)]:
-            row.addWidget(labeled(title,w),1)
-        self.report.currentIndexChanged.connect(self.report_changed); self.program.currentIndexChanged.connect(self.populate_sections)
-        for w in [self.section,self.faculty,self.room]: w.currentIndexChanged.connect(self.render)
-        self.main_card=Card('Report Preview','Selected academic term'); self.lay.addWidget(self.main_card)
-        body=self.main_card.body(); self.calendar=CalendarWidget(step_minutes=30); body.addWidget(self.calendar)
-        self.table=make_table(['Subject','Section','Faculty','Room','Day','Time']); body.addWidget(self.table)
-        self.banner=Banner(); body.addWidget(self.banner)
-        self.chart_card=Card('Room Utilization','Weekly occupancy rate across all classrooms')
-        self.chart=BarChart(); self.chart_card.body().addWidget(self.chart); self.lay.addWidget(self.chart_card)
+        self.add_header('MODULE 05','Reports & Timetables',
+                        'Review saved schedules and export official reports.',[
+            button('Print',slot=self.print_report),
+            button('Export PDF',slot=self.export_pdf),
+            button('Export CSV',slot=self.export_csv),
+            self.excel_button,
+        ])
+        filter_card=Card()
+        self.lay.addWidget(filter_card)
+        row=QHBoxLayout()
+        row.setSpacing(14)
+        filter_card.body(margins=(18,12,18,12)).addLayout(row)
+        self.report=Combo()
+        self.report.addItems(REPORTS)
+        self.report.setCurrentText('Section Schedules')
+        row.addWidget(labeled('Report Type',self.report),1)
+        self.program=Combo()
+        self.section=Combo()
+        self.faculty=Combo()
+        self.room=Combo()
+        self.filter_card=QWidget()
+        filters=QHBoxLayout(self.filter_card)
+        filters.setContentsMargins(0,0,0,0)
+        filters.setSpacing(14)
+        self.filter_widgets={}
+        for key,title,combo in [
+            ('program','Program',self.program),
+            ('section','Section',self.section),
+            ('faculty','Faculty',self.faculty),
+            ('room','Classroom',self.room),
+        ]:
+            host=labeled(title,combo)
+            filters.addWidget(host,1)
+            self.filter_widgets[key]=host
+        row.addWidget(self.filter_card,2)
+        self.report.currentIndexChanged.connect(self._report_changed)
+        self.program.currentIndexChanged.connect(self.populate_sections)
+        for combo in (self.section,self.faculty,self.room):
+            combo.currentIndexChanged.connect(self.render)
+
+        self.main_card=Card('Report Preview','Selected academic term')
+        self.lay.addWidget(self.main_card)
+        body=self.main_card.body()
+        self.calendar=CalendarWidget(step_minutes=30)
+        body.addWidget(self.calendar)
+        self.table=make_table(['Subject','Section','Faculty','Room','Day','Time'])
+        body.addWidget(self.table)
+        self.resolve_button=button('Resolve conflicts',slot=lambda: self.win.go('validation'))
+        self.resolve_button.hide()
+        self.banner=Banner(right=self.resolve_button)
+        body.addWidget(self.banner)
+        self.chart_card=Card('Room Utilization','Weekly occupancy rate')
+        self.chart=BarChart()
+        self.chart_card.body().addWidget(self.chart)
+        self.lay.addWidget(self.chart_card)
         self.summary_card=Card('Schedule Summary')
-        self.summary=label('',wrap=True); self.summary_card.body().addWidget(self.summary)
+        self.summary=label('',wrap=True)
+        self.summary_card.body().addWidget(self.summary)
         self.lay.addWidget(self.summary_card)
         self.finish()
 
     def _report_changed(self, *_):
-        # Default to all records when changing report types; filters remain optional.
+        # Report changes show the full scope by default, with optional filtering.
+        room_mode=self.report.currentText()=='Room Utilization Schedule'
+        chosen_room=self.room.currentData()
         for combo in (self.program,self.section,self.faculty,self.room):
             combo.blockSignals(True)
             combo.setCurrentIndex(0)
             combo.blockSignals(False)
+        if room_mode:
+            self._set_filter_options(
+                self.room,db.rows('SELECT id,name FROM classrooms ORDER BY name'),
+                'All rooms',False,preferred_id=chosen_room
+            )
+        else:
+            self._set_filter_options(
+                self.room,db.rows('SELECT id,name FROM classrooms ORDER BY name'),
+                'All rooms',True
+            )
         self.render()
 
     def _show_relevant_filters(self,mode):
-        relevant={
+        active={
             'Class Schedules': {'program','section','faculty','room'},
             'Faculty Schedules': {'faculty'},
             'Section Schedules': {'program','section'},
             'Classroom Schedules': {'room'},
+            'Room Utilization Schedule': {'room'},
             'Room Utilization': set(),
             'Faculty Teaching Load': {'faculty'},
             'Conflict Reports': set(),
             'Available Rooms': {'room'},
         }.get(mode,set())
-        self.filter_card.setVisible(bool(relevant))
+        self.filter_card.setVisible(bool(active))
         for key,host in self.filter_widgets.items():
-            host.setVisible(key in relevant)
-        return relevant
-        self.resolve_button=button('Resolve conflicts','smallPrimary',lambda: self.win.go('validation'))
-        self.resolve_button.setVisible(False)
-        self.banner=Banner(right=self.resolve_button); body.addWidget(self.banner)
-        right=QVBoxLayout(); columns.addLayout(right,1)
-        chart=Card('Room Utilization','Weekly occupancy rate'); self.chart_card=chart; self.chart=BarChart(); chart.body().addWidget(self.chart); right.addWidget(chart)
-        summary=Card('Schedule Summary'); self.summary=label('',wrap=True); summary.body().addWidget(self.summary); right.addWidget(summary); right.addStretch(); self.finish()
+            host.setVisible(key in active)
+        return active
 
     def refresh(self):
-        if self.report.currentText() == 'Room Utilization Schedule':
-            for combo in (self.program, self.section, self.faculty):
-                combo.blockSignals(True)
-                combo.setCurrentIndex(-1)
-                combo.blockSignals(False)
-        include_all = self.report.currentText() not in REPORTS[:3]
-        self._set_filter_options(
-            self.program, db.rows('SELECT id,name FROM programs ORDER BY code'),
-            'All programs', include_all,
-        )
-        self._set_filter_options(
-            self.faculty, db.rows('SELECT id,name FROM faculty ORDER BY name'),
-            'All faculty', include_all,
-        )
-        self._set_filter_options(
-            self.room, db.rows('SELECT id,name FROM classrooms ORDER BY name'),
-            'All rooms', self.report.currentText() != 'Room Utilization Schedule',
-        )
+        self._set_filter_options(self.program,
+            db.rows('SELECT id,name FROM programs ORDER BY code'),'All programs',True)
+        self._set_filter_options(self.faculty,
+            db.rows('SELECT id,name FROM faculty ORDER BY name'),'All faculty',True)
+        self._set_filter_options(self.room,
+            db.rows('SELECT id,name FROM classrooms ORDER BY name'),'All rooms',
+            self.report.currentText()!='Room Utilization Schedule')
         self.populate_sections()
 
-    def _set_filter_options(self, combo, records, all_label, include_all, preferred_text=None):
-        selected = combo.currentData()
+    def _set_filter_options(self, combo, records, all_label, include_all, preferred_id=None):
+        selection=combo.currentData() if preferred_id is None else preferred_id
         combo.blockSignals(True)
         combo.clear()
         if include_all:
-            combo.addItem(all_label, None)
+            combo.addItem(all_label,None)
         for record in records:
-            combo.addItem(record['name'], record['id'])
-        index = combo.findData(selected)
-        if index < 0 and preferred_text is not None:
-            index = combo.findText(preferred_text)
-        combo.setCurrentIndex(index if index >= 0 else 0)
+            combo.addItem(record['name'],record['id'])
+        index=combo.findData(selection)
+        if index<0:
+            index=0 if combo.count() else -1
+        combo.setCurrentIndex(index)
         combo.blockSignals(False)
 
     def report_changed(self):
-        room_schedule = self.report.currentText() == 'Room Utilization Schedule'
-        if room_schedule:
-            for combo in (self.program, self.section, self.faculty):
-                combo.blockSignals(True)
-                combo.setCurrentIndex(-1)
-                combo.blockSignals(False)
-        else:
-            self.room.blockSignals(True)
-            self.room.setCurrentIndex(-1)
-            self.room.blockSignals(False)
-        include_all = self.report.currentText() not in REPORTS[:3]
-        self._set_filter_options(
-            self.program, db.rows('SELECT id,name FROM programs ORDER BY code'),
-            'All programs', include_all,
-        )
-        self._set_filter_options(
-            self.faculty, db.rows('SELECT id,name FROM faculty ORDER BY name'),
-            'All faculty', include_all,
-        )
-        self._set_filter_options(
-            self.room, db.rows('SELECT id,name FROM classrooms ORDER BY name'),
-            'All rooms', not room_schedule,
-        )
-        self.populate_sections()
+        self._report_changed()
 
-    def populate_sections(self):
-        include_all = self.report.currentText() not in REPORTS[:3]
+    def populate_sections(self, *_):
+        chosen=self.section.currentData()
         pid=self.program.currentData()
-        for r in db.rows('SELECT id,name FROM sections'+(' WHERE program_id=?' if pid else '')+' ORDER BY name',(pid,) if pid else ()):
-            self.section.addItem(r['name'],r['id'])
-        self.section.setCurrentIndex(max(0,self.section.findData(keep))); self.section.blockSignals(False); self.render()
-        records = db.rows(
-            'SELECT id,name FROM sections'+(' WHERE program_id=?' if pid else '')+' ORDER BY name',
-            (pid,) if pid else (),
-        )
-        self._set_filter_options(
-            self.section, records, 'All sections', include_all, preferred_text='BSCS 2A',
-        )
+        query=('SELECT id,name FROM sections WHERE program_id=? ORDER BY name'
+               if pid is not None else 'SELECT id,name FROM sections ORDER BY name')
+        records=db.rows(query,(pid,) if pid is not None else ())
+        self._set_filter_options(self.section,records,'All sections',True,
+                                 preferred_id=chosen)
         self.render()
 
     def render(self):
-        if not hasattr(self,'calendar'): return
+        if not hasattr(self,'calendar'):
+            return
         rows=logic.schedule_rows(self.win.term_id())
         mode=self.report.currentText()
         active=self._show_relevant_filters(mode)
         pid=self.program.currentData() if 'program' in active else None
-        sections={r[0] for r in db.rows('SELECT id FROM sections WHERE program_id=?',(pid,))} if pid else None
+        section_ids=({r['id'] for r in db.rows(
+            'SELECT id FROM sections WHERE program_id=?',(pid,))}
+            if pid is not None else None)
         sid=self.section.currentData() if 'section' in active else None
         fid=self.faculty.currentData() if 'faculty' in active else None
         rid=self.room.currentData() if 'room' in active else None
-        self.report_rows=[r for r in rows if (sections is None or r['section_id'] in sections) and (sid is None or r['section_id']==sid) and (fid is None or r['faculty_id']==fid) and (rid is None or r['room_id']==rid)]
-        # All-class and all-faculty views contain overlapping unrelated groups;
-        # display the assignment list until a specific faculty member is chosen.
-        grid_mode=(mode=='Section Schedules' and sid is not None) or (mode=='Classroom Schedules' and rid is not None) or (mode=='Faculty Schedules' and fid is not None)
-        self.calendar.set_rows(self.report_rows,'section' if mode in ['Faculty Schedules','Classroom Schedules'] else 'room')
-        self.main_card.title_label.setText(mode)
-        selected=(self.faculty.currentText() if mode=='Faculty Schedules' and fid is not None
-                  else self.section.currentText() if mode=='Section Schedules' and sid is not None
-                  else self.room.currentText() if mode=='Classroom Schedules' and rid is not None
-                  else 'All records')
-        self.main_card.subtitle.setText(self.win.term_name()+' · '+selected)
-        self.excel_button.setEnabled(mode in REPORTS[:4])
-        if mode == 'Room Utilization Schedule':
-            room_id = self.room.currentData()
-            self.report_rows = [r for r in rows if room_id is not None and r['room_id'] == room_id]
-        else:
-            self.report_rows=[r for r in rows if (sections is None or r['section_id'] in sections) and (self.section.currentData() is None or r['section_id']==self.section.currentData()) and (self.faculty.currentData() is None or r['faculty_id']==self.faculty.currentData()) and (self.room.currentData() is None or r['room_id']==self.room.currentData())]
+        self.report_rows=[
+            r for r in rows
+            if (section_ids is None or r['section_id'] in section_ids)
+            and (sid is None or r['section_id']==sid)
+            and (fid is None or r['faculty_id']==fid)
+            and (rid is None or r['room_id']==rid)
+        ]
+        room_mode=mode=='Room Utilization Schedule'
+        if room_mode:
+            # This report always includes every section and faculty using
+            # the selected room, regardless of hidden filter values.
+            self.report_rows=[
+                r for r in rows if rid is not None and r['room_id']==rid
+            ]
+        grid_mode=(
+            (mode=='Section Schedules' and sid is not None)
+            or (mode=='Classroom Schedules' and rid is not None)
+            or (mode=='Faculty Schedules' and fid is not None)
+            or (room_mode and rid is not None)
+        )
         self.calendar.set_rows(
             self.report_rows,
-            'section' if mode in ['Faculty Schedules','Room Utilization Schedule'] else 'room',
-            include_faculty=mode == 'Room Utilization Schedule',
-            show_availability=mode == 'Room Utilization Schedule' and self.room.currentData() is not None,
-            room_id=self.room.currentData() if mode == 'Room Utilization Schedule' else None,
+            'section' if mode in ('Faculty Schedules','Classroom Schedules','Room Utilization Schedule') else 'room',
+            include_faculty=room_mode,
+            show_availability=room_mode and rid is not None,
+            room_id=rid if room_mode else None
         )
-        for combo in (self.program, self.section, self.faculty):
-            combo.setEnabled(mode != 'Room Utilization Schedule')
-        self.main_card.title_label.setText(
-            mode+' — '+(self.room.currentText() if mode == 'Room Utilization Schedule' else self.section.currentText())
+        for combo in (self.program,self.section,self.faculty):
+            combo.setEnabled(not room_mode)
+        selected=(
+            self.faculty.currentText() if mode=='Faculty Schedules' and fid is not None
+            else self.section.currentText() if mode=='Section Schedules' and sid is not None
+            else self.room.currentText() if mode in ('Classroom Schedules','Room Utilization Schedule') and rid is not None
+            else 'All records'
         )
-        self.main_card.subtitle.setText(self.win.term_name())
+        self.main_card.title_label.setText(mode)
+        self.main_card.subtitle.setText(self.win.term_name()+' · '+selected)
+        self.excel_button.setEnabled(mode in EXPORTABLE_SCHEDULES)
         self.headers=['Subject','Section','Faculty','Room','Day','Time']
-        self.output=[[r['code'],r['section'],r['faculty'],r['room'],r['day'],f'{logic.fmt(r["start_min"])} – {logic.fmt(r["end_min"])}'] for r in self.report_rows]
-        if mode == 'Room Utilization Schedule':
+        self.output=[
+            [r['code'],r['section'],r['faculty'],r['room'],r['day'],
+             f'{logic.fmt(r["start_min"])} – {logic.fmt(r["end_min"])}']
+            for r in self.report_rows
+        ]
+        if room_mode:
             self.headers=['Room','Day','From','To','Status','Course','Section','Instructor']
             self.output=[]
-            selected_room=self.room.currentData()
-            room_record=db.row('SELECT name FROM classrooms WHERE id=?',(selected_room,)) if selected_room is not None else None
-            unavailable={}
-            if selected_room is not None and db.row("SELECT 1 FROM sqlite_master WHERE type='table' AND name='unavailable'"):
-                unavailable={d:db.rows(
-                    "SELECT start_min,end_min FROM unavailable WHERE kind='room' AND resource_id=? AND day=?",
-                    (selected_room,d),
-                ) for d,_ in db.DAYS}
-            for day,_ in db.DAYS:
-                for start in range(logic.CAL_START,logic.CAL_END,30):
-                    end=start+30
-                    occupants=[r for r in self.report_rows if r['day']==day and logic.overlap(start,end,r['start_min'],r['end_min'])]
-                    blocked=any(logic.overlap(start,end,w['start_min'],w['end_min']) for w in unavailable.get(day,[]))
-                    status='Occupied' if occupants else 'Unavailable' if blocked else 'Available'
-                    self.output.append([
-                        room_record['name'] if room_record else '',
-                        day,logic.fmt(start),logic.fmt(end),status,
-                        '; '.join(r['code'] for r in occupants),
-                        '; '.join(r['section'] for r in occupants),
-                        '; '.join(r['faculty'] for r in occupants),
-                    ])
-        utilization_rooms=db.rows('SELECT id FROM classrooms')
-        if mode == 'Room Utilization Schedule':
-            room_id=self.room.currentData()
-            utilization_rooms=[r for r in utilization_rooms if r['id']==room_id] if room_id is not None else []
-        room_count=len(utilization_rooms)
+            room_record=(db.row('SELECT name FROM classrooms WHERE id=?',(rid,))
+                         if rid is not None else None)
+            blocked={}
+            if rid is not None and db.row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='unavailable'"
+            ):
+                blocked={
+                    day:db.rows(
+                        "SELECT start_min,end_min FROM unavailable "
+                        "WHERE kind='room' AND resource_id=? AND day=?",(rid,day)
+                    ) for day,_ in db.DAYS
+                }
+            if rid is not None:
+                for day,_ in db.DAYS:
+                    for start in range(logic.CAL_START,logic.CAL_END,30):
+                        finish=start+30
+                        occupants=[
+                            r for r in self.report_rows
+                            if r['day']==day and logic.overlap(
+                                start,finish,r['start_min'],r['end_min'])
+                        ]
+                        unavailable=any(
+                            logic.overlap(start,finish,w['start_min'],w['end_min'])
+                            for w in blocked.get(day,[])
+                        )
+                        status=('Occupied' if occupants else
+                                'Unavailable' if unavailable else 'Available')
+                        self.output.append([
+                            room_record['name'] if room_record else '',day,
+                            logic.fmt(start),logic.fmt(finish),status,
+                            '; '.join(r['code'] for r in occupants),
+                            '; '.join(r['section'] for r in occupants),
+                            '; '.join(r['faculty'] for r in occupants)
+                        ])
+        available_rooms=(
+            [r for r in db.rows('SELECT id FROM classrooms') if r['id']==rid]
+            if room_mode and rid is not None
+            else db.rows('SELECT id FROM classrooms') if not room_mode
+            else []
+        )
         hours=(logic.CAL_END-logic.CAL_START)/60
         utilization=[]
-        for d,_ in db.DAYS:
-            # Merge occupied intervals per room, so overlaps cannot inflate occupancy.
+        for day,_ in db.DAYS:
             total=0
-            for room in utilization_rooms:
-                intervals=sorted((max(logic.CAL_START,r['start_min']),min(logic.CAL_END,r['end_min'])) for r in rows if r['day']==d and r['room_id']==room['id'])
-                end=logic.CAL_START
-                for a,b in intervals:
-                    total+=max(0,b-max(a,end)); end=max(end,b)
-            utilization.append((d,round(100*total/(room_count*hours*60),1) if room_count else 0))
+            for room in available_rooms:
+                intervals=sorted(
+                    (max(logic.CAL_START,r['start_min']),min(logic.CAL_END,r['end_min']))
+                    for r in rows if r['day']==day and r['room_id']==room['id']
+                )
+                last=logic.CAL_START
+                for start,finish in intervals:
+                    total+=max(0,finish-max(start,last))
+                    last=max(last,finish)
+            percentage=(round(100*total/(len(available_rooms)*hours*60),1)
+                        if available_rooms else 0)
+            utilization.append((day,percentage))
         self.chart.set_data(utilization)
         self.chart_card.title_label.setText(
-            'Selected Room Utilization' if mode == 'Room Utilization Schedule' else 'Room Utilization'
+            'Selected Room Utilization' if room_mode else 'Room Utilization'
         )
         if mode=='Room Utilization':
-            self.headers=['Day','Occupancy']; self.output=[[d,str(v)+'%'] for d,v in utilization]
+            self.headers=['Day','Occupancy']
+            self.output=[[day,str(pct)+'%'] for day,pct in utilization]
         elif mode=='Faculty Teaching Load':
-            loads=logic.faculty_loads(self.win.term_id()); self.headers=['Faculty','Assigned Units','Maximum Units']; self.output=[[r['name'],loads.get(r['id'],0),r['max_units']] for r in db.rows('SELECT * FROM faculty') if fid is None or r['id']==fid]
+            loads=logic.faculty_loads(self.win.term_id())
+            self.headers=['Faculty','Assigned Units','Maximum Units']
+            self.output=[
+                [r['name'],loads.get(r['id'],0),r['max_units']]
+                for r in db.rows('SELECT * FROM faculty')
+                if fid is None or r['id']==fid
+            ]
         elif mode=='Conflict Reports':
-            self.headers=['Issue','Schedule','Description','Severity']; self.output=[[i['type'],i['label'],i['desc'],i['severity']] for i in logic.validate_term(self.win.term_id())['issues']]
+            self.headers=['Issue','Schedule','Description','Severity']
+            self.output=[
+                [issue['type'],issue['label'],issue['desc'],issue['severity']]
+                for issue in logic.validate_term(self.win.term_id())['issues']
+            ]
         elif mode=='Available Rooms':
-            self.headers=['Room','Capacity','Day','From','To']; self.output=[]
             from ui.availability import unavailable
+            self.headers=['Room','Capacity','Day','From','To']
+            self.output=[]
             for room in db.rows('SELECT * FROM classrooms'):
-                if rid is not None and room['id']!=rid: continue
-                for d,_ in db.DAYS:
-                    for a,b,_ in logic.BLOCKS:
-                        if not unavailable('room',room['id'],d,a,b) and not any(r['room_id']==room['id'] and r['day']==d and logic.overlap(a,b,r['start_min'],r['end_min']) for r in rows):
-                            self.output.append([room['name'],room['capacity'],d,logic.fmt(a),logic.fmt(b)])
-        self.table.setColumnCount(len(self.headers)); self.table.setHorizontalHeaderLabels([h.upper() for h in self.headers]); self.table._flex_weights={i:1 for i in range(len(self.headers))}; self.table.setRowCount(len(self.output))
-        for n,record in enumerate(self.output):
-            for c,value in enumerate(record): self.table.setItem(n,c,text_item(value))
-        fit_table(self.table); self.calendar.setVisible(grid_mode); self.table.setVisible(not grid_mode)
+                if rid is not None and room['id']!=rid:
+                    continue
+                for day,_ in db.DAYS:
+                    for start,finish,_label in logic.BLOCKS:
+                        if (not unavailable('room',room['id'],day,start,finish)
+                            and not any(
+                                r['room_id']==room['id'] and r['day']==day
+                                and logic.overlap(start,finish,r['start_min'],r['end_min'])
+                                for r in rows
+                            )):
+                            self.output.append([
+                                room['name'],room['capacity'],day,
+                                logic.fmt(start),logic.fmt(finish)
+                            ])
+        self.table.setColumnCount(len(self.headers))
+        self.table.setHorizontalHeaderLabels([h.upper() for h in self.headers])
+        self.table._flex_weights={i:1 for i in range(len(self.headers))}
+        self.table.setRowCount(len(self.output))
+        for index,record in enumerate(self.output):
+            for col,value in enumerate(record):
+                self.table.setItem(index,col,text_item(value))
+        fit_table(self.table)
+        self.calendar.setVisible(grid_mode)
+        self.table.setVisible(not grid_mode)
         self.chart_card.setVisible(mode=='Room Utilization')
-        self.summary_card.setVisible(mode in REPORTS[:4])
+        self.summary_card.setVisible(mode in EXPORTABLE_SCHEDULES)
         validation=logic.validate_term(self.win.term_id())
-        self.banner.title.setText('Resolve critical conflicts before using final timetables.' if validation['critical'] else 'Timetable validated. No critical conflicts detected.')
-        self.banner.text.setText(f'{len(validation["issues"])} issues in this term. Export reflects current saved data.'); self.banner.text.show()
-        self.resolve_button.setVisible(validation['critical'] > 0)
+        self.banner.title.setText(
+            'Resolve critical conflicts before using final timetables.'
+            if validation['critical'] else
+            'Timetable validated. No critical conflicts detected.'
+        )
+        self.banner.text.setText(
+            f'{len(validation["issues"])} issues in this term. Export reflects current saved data.'
+        )
+        self.banner.text.show()
+        self.resolve_button.setVisible(validation['critical']>0)
         from ui.widgets import set_kind
         set_kind(self.banner,'bad' if validation['critical'] else 'good')
-        summary_label='Average selected room utilization' if mode == 'Room Utilization Schedule' else 'Average room utilization'
-        self.summary.setText(f'Total subjects: {len({r["subject_id"] for r in self.report_rows})}\n\nWeekly class hours: {sum((r["end_min"]-r["start_min"])/60 for r in self.report_rows):g}\n\nRooms assigned: {len({r["room_id"] for r in self.report_rows})}\n\n{summary_label}:\n{sum(v for _,v in utilization)/6:.1f}%')
+        self.summary.setText(
+            f'Total subjects: {len({r["subject_id"] for r in self.report_rows})}\n\n'
+            f'Weekly class hours: {sum((r["end_min"]-r["start_min"])/60 for r in self.report_rows):g}\n\n'
+            f'Rooms assigned: {len({r["room_id"] for r in self.report_rows})}\n\n'
+            f'Average room utilization: {sum(v for _,v in utilization)/6:.1f}%'
+        )
 
     def schedule_sheet_html(self, all_schedules=False):
         esc = lambda value: html.escape(str(value))
@@ -726,12 +789,17 @@ class ReportsPage(Page):
 
     def document(self):
         doc=QTextDocument()
-        doc.setHtml(self._timetable_html() if self.report.currentText() in REPORTS[:4]
-                    else self._table_report_html())
+        mode=self.report.currentText()
+        if mode=='Room Utilization Schedule':
+            content=self._official_heading('ROOM UTILIZATION SCHEDULE')+self.room_utilization_html()
+            doc.setHtml('<html><head><style>'+self._print_styles()+'</style></head><body>'+content+'</body></html>')
+        else:
+            doc.setHtml(self._timetable_html() if mode in TIMETABLE_REPORTS
+                        else self._table_report_html())
         return doc
 
     def export_pdf(self):
-        default_name = "ClassFlow-schedule-sheet.pdf" if self.report.currentText() in REPORTS[:4] else "ClassFlow-report.pdf"
+        default_name = "ClassFlow-schedule-sheet.pdf" if self.report.currentText() in EXPORTABLE_SCHEDULES else "ClassFlow-report.pdf"
         path,_=QFileDialog.getSaveFileName(self,'Export PDF',default_name,'PDF (*.pdf)')
         if path:
             printer=QPrinter(QPrinter.HighResolution); printer.setOrientation(QPrinter.Landscape); printer.setOutputFormat(QPrinter.PdfFormat); printer.setOutputFileName(path)
@@ -746,8 +814,31 @@ class ReportsPage(Page):
         printer=QPrinter(QPrinter.HighResolution); printer.setOrientation(QPrinter.Landscape)
         if QPrintDialog(printer,self).exec_(): self.document().print_(printer)
 
+    def print_schedule_pdf(self, printer, document):
+        # The same document is used for printing and saving PDF.
+        document.setTextWidth(printer.pageRect().width())
+        document.print_(printer)
+
+    def export_csv(self):
+        path,_=QFileDialog.getSaveFileName(
+            self,'Export CSV','ClassFlow-report.csv','CSV (*.csv)')
+        if not path:
+            return
+        def safe(value):
+            text=str(value)
+            return "'"+text if text.startswith(('=','+','-','@','\t','\r')) else text
+        try:
+            with open(path,'w',newline='',encoding='utf-8-sig') as handle:
+                writer=csv.writer(handle)
+                writer.writerow(self.headers)
+                writer.writerows([[safe(v) for v in row] for row in self.output])
+        except OSError as exc:
+            self.win.notify(f'CSV export failed: {exc}','error')
+            return
+        self.win.notify('CSV report exported.')
+
     def export_excel(self):
-        if self.report.currentText() not in REPORTS[:4]:
+        if self.report.currentText() not in EXPORTABLE_SCHEDULES:
             self.win.notify('Excel schedule export is available for schedule reports.','error')
             return
         default_name = "ClassFlow-schedule-sheet.xlsx"
