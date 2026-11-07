@@ -77,19 +77,37 @@ class FrostedGlass(QFrame):
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        area = QRectF(self.rect()).adjusted(1, 1, -1, -1)
+        # Only OUTER left corners are rounded. The edge touching the login
+        # form must remain square and flush; rounding both sides created the
+        # visible dark strip in the middle of the login card.
+        w, h = float(self.width()), float(self.height())
+        radius = min(12.0, w / 4, h / 4)
         clip = QPainterPath()
-        clip.addRoundedRect(area, 12, 12)
+        clip.moveTo(radius, 0)
+        clip.lineTo(w, 0)
+        clip.lineTo(w, h)
+        clip.lineTo(radius, h)
+        clip.quadTo(0, h, 0, h-radius)
+        clip.lineTo(0, radius)
+        clip.quadTo(0, 0, radius, 0)
+        clip.closeSubpath()
         painter.setClipPath(clip)
         if not self._blurred.isNull():
             painter.drawPixmap(self.rect(), self._blurred)
-        # Deep blue translucent tint keeps the original logo readable while
-        # allowing the blurred full-screen background to remain visible.
+        # Fill the right edge without any transparent rounded gap.
         painter.fillRect(self.rect(), QColor(26, 39, 67, 100))
         painter.setClipping(False)
-        painter.setPen(QPen(QColor(243, 249, 255, 115), 1.2))
+        painter.setPen(QPen(QColor(243, 249, 255, 105), 1.0))
         painter.setBrush(Qt.NoBrush)
-        painter.drawRoundedRect(area, 12, 12)
+        # Draw borders only around the outer edges, not at the shared join.
+        outline = QPainterPath()
+        outline.moveTo(w-1, 0.5)
+        outline.lineTo(radius, 0.5)
+        outline.quadTo(0.5, 0.5, 0.5, radius)
+        outline.lineTo(0.5, h-radius)
+        outline.quadTo(0.5, h-0.5, radius, h-0.5)
+        outline.lineTo(w-1, h-0.5)
+        painter.drawPath(outline)
         painter.end()
 
 
@@ -141,9 +159,12 @@ class LoginDialog(QDialog):
         # A roomier card on typical desktops, while smaller screens can
         # still shrink the width without clipping the form.
         card = QFrame()
+        card.setObjectName('loginCard')
         card.setMinimumHeight(410)
         card.setMaximumWidth(820)
-        card.setStyleSheet('QFrame { border: none; }')
+        # A single continuous backing surface prevents any black gap between
+        # the glass on the left and the dark form on the right.
+        card.setStyleSheet('QFrame#loginCard { background:#202020; border:0; border-radius:12px; }')
         self.login_card = card
         row = QHBoxLayout(card); row.setContentsMargins(0,0,0,0); row.setSpacing(0)
         photo = FrostedGlass(bg)
