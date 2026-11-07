@@ -100,6 +100,22 @@ class SystemTests(unittest.TestCase):
             logout.assert_called_once()
         win.close()
 
+    def test_appearance_switch_is_available_in_settings(self):
+        from ui.appearance import DARK_QSS, current_mode
+        win=MainWindow()
+        settings=win.pages["settings"]
+        self.assertIn("appearance",settings.tabs)
+        settings.set_tab("appearance")
+        self.assertTrue(settings.tabs["appearance"].isChecked())
+        self.assertEqual(len(settings.appearance_buttons),2)
+        self.assertIn("QMainWindow",DARK_QSS)
+        with patch("ui.main_window.save_mode") as save, \
+             patch("ui.main_window.apply_mode") as apply:
+            settings._choose_appearance("dark")
+            save.assert_called_once_with("dark")
+            apply.assert_called_once_with("dark")
+        win.close()
+
     def test_phase_one_dashboard_and_global_search(self):
         win = MainWindow(username='Moises')
         win.show(); app.processEvents()
