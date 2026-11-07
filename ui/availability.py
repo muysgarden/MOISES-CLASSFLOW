@@ -83,8 +83,10 @@ class AvailabilityPage(Page):
                 border-radius: 9px; padding: 11px 16px; font-weight: 700; }
             #availabilityPage QPushButton#availToggle:hover { background: #244CC1; }
             #availabilityPage QPushButton#availRemove {
-                background: #FFF0F0; color: #AC4242; border: none; border-radius: 7px;
-                padding: 6px 12px; }
+                background: transparent; color: #5A6C83; border: 1px solid #DBE3EE;
+                border-radius: 7px; padding: 4px 10px; font-weight: 500; }
+            #availabilityPage QPushButton#availRemove:hover {
+                background: #FFF2F2; color: #B33945; border-color: #E8BAC0; }
             #availabilityPage QTableWidget#blockedRecords {
                 background: white; color: #344761; border: 1px solid #E4EAF3;
                 border-radius: 9px; gridline-color: #EDF1F8; font-size: 12px; }
