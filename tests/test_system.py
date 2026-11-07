@@ -128,6 +128,32 @@ class SystemTests(unittest.TestCase):
         self.assertEqual(win._search_results('there-is-no-classflow-result'), [])
         win.close()
 
+    def test_school_hours_and_suggested_slots(self):
+        self.assertEqual(logic.CAL_START, 7*60)
+        self.assertEqual(logic.CAL_END, 17*60)
+        record=logic.schedule_rows(1)[0]
+        issues=logic.check_candidate(
+            1,record['subject_id'],record['section_id'],
+            record['faculty_id'],record['room_id'],['Mon'],17*60,18*60
+        )
+        self.assertTrue(any(i['type']=='Invalid Time' and
+                            i['severity']==logic.CRITICAL for i in issues))
+        options=logic.suggest_schedule_slots(
+            1,record['subject_id'],record['section_id'],record['faculty_id'],
+            duration=60,limit=3
+        )
+        for option in options:
+            self.assertGreaterEqual(option['start_min'],7*60)
+            self.assertLessEqual(option['end_min'],17*60)
+            self.assertFalse(any(
+                i['severity']==logic.CRITICAL
+                for i in logic.check_candidate(
+                    1,record['subject_id'],record['section_id'],
+                    record['faculty_id'],option['room_id'],[option['day']],
+                    option['start_min'],option['end_min']
+                )
+            ))
+
     def test_schedule_conflicts(self):
         r=logic.schedule_rows(1)[0]
         issues=logic.check_candidate(1,r['subject_id'],r['section_id'],r['faculty_id'],r['room_id'],[r['day']],r['start_min'],r['end_min'])
@@ -706,8 +732,9 @@ class SystemTests(unittest.TestCase):
             f'{logic.fmt(logic.CAL_START)} - {logic.fmt(logic.CAL_START + 30)}',
             sheet,
         )
-        self.assertEqual(sheet.count('<td height="20" align="center" nowrap="nowrap">'),26)
-        self.assertEqual(sheet.count('<tr height="20">'),26)
+        expected_slots=(logic.CAL_END-logic.CAL_START)//30
+        self.assertEqual(sheet.count('<td height="20" align="center" nowrap="nowrap">'),expected_slots)
+        self.assertEqual(sheet.count('<tr height="20">'),expected_slots)
         self.assertIn('rowspan=',sheet)
         for row in reports.report_rows:
             for key in ('code','section','faculty','room'):
