@@ -349,6 +349,9 @@ class AvailabilityPage(Page):
         if end <= start:
             self.win.notify("End time must be later than start time.", "warning")
             return
+        if start < logic.CAL_START or end > logic.CAL_END:
+            self.win.notify("School hours are 7:00 AM to 5:00 PM.", "warning")
+            return
         day = self.block_day.currentData()
         if db.row('''SELECT 1 FROM unavailable WHERE kind=? AND resource_id=? AND day=?
                      AND start_min<? AND end_min>? LIMIT 1''',
