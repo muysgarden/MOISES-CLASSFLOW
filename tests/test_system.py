@@ -402,12 +402,19 @@ class SystemTests(unittest.TestCase):
         for key in win.pages:
             win.go(key); app.processEvents()
         self.assertEqual(logic.validate_term(win.term_id())['total'],0)
-        page=win.pages['academic']; page.set_tab('programs')
-        combo=page.form.widgets['name']
-        self.assertEqual(combo.currentText(), '')
-        combo.setCurrentIndex(1)
-        page.save()
-        self.assertEqual(db.row('SELECT COUNT(*) FROM programs')[0],1)
+        page=win.pages['academic']
+        self.assertEqual(list(page.tab_btns),
+            ['sections','subjects','faculty','classrooms','terms'])
+        self.assertEqual(
+            [(r['code'],r['name']) for r in db.rows(
+                "SELECT code,name FROM programs ORDER BY code")],
+            db.CCS_PROGRAMS
+        )
+        page.set_tab('sections')
+        combo=page.form.widgets['program_id']
+        self.assertTrue(combo.count() >= 2)
+        page.set_tab('subjects')
+        self.assertEqual(len(page.form.widgets['programs'].boxes),2)
         win.close()
 
     def test_schedule_editor_create_edit_delete(self):
@@ -560,10 +567,13 @@ class SystemTests(unittest.TestCase):
             program = db.row("SELECT id FROM programs WHERE code='BSCS'")["id"]
             db.conn.execute("INSERT INTO sections(name,program_id,enrollment) VALUES('Real 5A',?,30)",
                             (program,))
-        with self.assertRaisesRegex(ValueError, 'linked'):
-            db.clear_sample_data()
-        self.assertEqual(db.sample_count(), original)
+        # A manually added section may rely on the permanent BSCS program.
+        # Clearing tracked demo data must preserve both the new section and
+        # its program, while removing only tagged demonstration rows.
+        self.assertEqual(db.clear_sample_data(),original)
+        self.assertEqual(db.sample_count(),0)
         self.assertIsNotNone(db.row("SELECT id FROM sections WHERE name='Real 5A'"))
+        self.assertEqual(db.row("SELECT COUNT(*) FROM programs")[0],2)
 
     def test_sample_tags_survive_reopening_database(self):
         db.conn.close()
@@ -680,7 +690,11 @@ class SystemTests(unittest.TestCase):
         win=MainWindow()
         self.assertIsNone(win.term_id())
         self.assertEqual(db.row('SELECT COUNT(*) FROM terms')[0],0)
-        for table in ('programs','sections','subjects','faculty','classrooms','schedules'):
+        self.assertEqual(
+            [(r['code'],r['name']) for r in db.rows("SELECT code,name FROM programs ORDER BY code")],
+            db.CCS_PROGRAMS
+        )
+        for table in ('sections','subjects','faculty','classrooms','schedules','periods'):
             self.assertEqual(db.row(f'SELECT COUNT(*) FROM {table}')[0],0)
         win.close()
 
@@ -701,7 +715,11 @@ class SystemTests(unittest.TestCase):
             self.assertEqual(db.row('SELECT COUNT(*) FROM programs')[0],original_count)
             import sqlite3
             connection=sqlite3.connect(fresh)
-            self.assertEqual(connection.execute('SELECT COUNT(*) FROM programs').fetchone()[0],0)
+            self.assertEqual(connection.execute('SELECT COUNT(*) FROM programs').fetchone()[0],2)
+            self.assertEqual(
+                [r[0] for r in connection.execute("SELECT code FROM programs ORDER BY code")],
+                ['BSCS','BSIT']
+            )
             self.assertEqual(connection.execute('SELECT COUNT(*) FROM terms').fetchone()[0],0)
             self.assertEqual(connection.execute('SELECT COUNT(*) FROM users').fetchone()[0],1)
             connection.close()
