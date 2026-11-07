@@ -322,7 +322,7 @@ class AvailabilityPage(Page):
                 self.blocks.setItem(index, col, cell)
             remove = QPushButton("Remove")
             remove.setObjectName("availRemove")
-            remove.setFixedSize(98, 31)
+            remove.setFixedSize(116, 32)
             remove.clicked.connect(lambda _=False, rid=item["id"]: self.remove_unavailability(rid))
             action_cell = QWidget()
             action_layout = QHBoxLayout(action_cell)
