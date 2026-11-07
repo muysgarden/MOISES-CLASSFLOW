@@ -604,6 +604,7 @@ class ReportsPage(Page):
         printer.setOrientation(QPrinter.Portrait)
         printer.setOutputFormat(QPrinter.PdfFormat)
         printer.setOutputFileName(str(path))
+        document.setPageSize(printer.pageRect(QPrinter.Point).size())
         document.print_(printer)
         if not path.is_file() or path.stat().st_size == 0:
             raise OSError(f"The schedule PDF could not be written to {path}.")
@@ -815,7 +816,7 @@ class ReportsPage(Page):
             if self.report.currentText() in EXPORTABLE_SCHEDULES:
                 self.print_schedule_pdf(printer, document)
             else:
-                document.print_(printer)
+                self.print_schedule_pdf(printer, document)
             self.win.notify('PDF report exported.')
 
     def print_report(self):
@@ -828,11 +829,12 @@ class ReportsPage(Page):
             if self.report.currentText() in EXPORTABLE_SCHEDULES:
                 self.print_schedule_pdf(printer,document)
             else:
-                document.print_(printer)
+                self.print_schedule_pdf(printer,document)
 
     def print_schedule_pdf(self, printer, document):
-        # The same document is used for printing and saving PDF.
-        document.setTextWidth(printer.pageRect().width())
+        # Explicit A4 pagination avoids QTextDocument's extra default margins
+        # and automatic page-number footer.
+        document.setPageSize(printer.pageRect(QPrinter.Point).size())
         document.print_(printer)
 
     def export_csv(self):
