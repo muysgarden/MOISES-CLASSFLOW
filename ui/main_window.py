@@ -480,10 +480,13 @@ class MainWindow(QMainWindow):
     def logout(self):
         from ui.login import LoginDialog
         from PyQt5.QtWidgets import QDialog
+        # Hide the authenticated workspace before asking for credentials again.
         self.hide()
         dialog = LoginDialog()
         if dialog.exec_() == QDialog.Accepted:
             self._update_account_name(dialog.username.text().strip())
-            self.show()
+            self.search.clear()
+            self.go("dashboard")
+            self.showMaximized()
         else:
             self.close()
