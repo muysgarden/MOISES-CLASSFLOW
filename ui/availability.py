@@ -84,7 +84,7 @@ class AvailabilityPage(Page):
             #availabilityPage QPushButton#availToggle:hover { background: #244CC1; }
             #availabilityPage QPushButton#availRemove {
                 background: transparent; color: #5A6C83; border: 1px solid #DBE3EE;
-                border-radius: 7px; padding: 4px 10px; font-weight: 500; }
+                border-radius: 7px; padding: 2px 4px; font-weight: 500; }
             #availabilityPage QPushButton#availRemove:hover {
                 background: #FFF2F2; color: #B33945; border-color: #E8BAC0; }
             #availabilityPage QTableWidget#blockedRecords {
@@ -132,17 +132,17 @@ class AvailabilityPage(Page):
         outer.addWidget(self._label("Check availability", "availHeading"))
         row = QHBoxLayout()
         row.setSpacing(12)
-        self.day = Combo()
+        self.day = searchable_combo()
         for code, name in db.DAYS:
             self.day.addItem(name, code)
-        self.start = Combo()
-        self.end = Combo()
+        self.start = searchable_combo()
+        self.end = searchable_combo()
         for minute, title in logic.TIME_CHOICES:
             self.start.addItem(title, minute)
             self.end.addItem(title, minute)
         self.start.setCurrentIndex(self.start.findData(8 * 60))
         self.end.setCurrentIndex(self.end.findData(9 * 60))
-        self.room_type = Combo()
+        self.room_type = searchable_combo()
         self.room_type.addItem("All room types", None)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Type a faculty or room name…")
@@ -158,9 +158,9 @@ class AvailabilityPage(Page):
             column.addWidget(control)
             row.addLayout(column, stretch)
         outer.addLayout(row)
-        self.day.currentIndexChanged.connect(self.refresh)
-        self.start.currentIndexChanged.connect(self.refresh)
-        self.end.currentIndexChanged.connect(self.refresh)
+        for combo in (self.day,self.start,self.end):
+            combo.currentIndexChanged.connect(self.refresh)
+            combo.lineEdit().editingFinished.connect(self.refresh)
         self.search.textChanged.connect(self.refresh)
         self.lay.addWidget(panel)
 
@@ -204,6 +204,7 @@ class AvailabilityPage(Page):
             self.counts.append(counter)
             self.empty_labels.append(empty)
         self.room_type.currentIndexChanged.connect(self.refresh)
+        self.room_type.lineEdit().editingFinished.connect(self.refresh)
         self.summary = self._label("")
         self.lay.addWidget(self.summary)
 
@@ -266,8 +267,9 @@ class AvailabilityPage(Page):
         header.setSectionResizeMode(4, QHeaderView.Fixed)
         self.blocks.setColumnWidth(1, 100)
         self.blocks.setColumnWidth(2, 190)
-        self.blocks.setColumnWidth(4, 102)
+        self.blocks.setColumnWidth(4, 124)
         self.blocks.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.blocks.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         v.addWidget(self.blocks)
         self.block_empty = self._label("No blocked time records yet.")
         v.addWidget(self.block_empty)
@@ -324,11 +326,11 @@ class AvailabilityPage(Page):
                 self.blocks.setItem(index, col, cell)
             remove = QPushButton("Remove")
             remove.setObjectName("availRemove")
-            remove.setFixedSize(86, 30)
+            remove.setFixedSize(84, 29)
             remove.clicked.connect(lambda _=False, rid=item["id"]: self.remove_unavailability(rid))
             action_cell = QWidget()
             action_layout = QHBoxLayout(action_cell)
-            action_layout.setContentsMargins(3, 3, 3, 3)
+            action_layout.setContentsMargins(4, 3, 4, 3)
             action_layout.addWidget(remove, 0, Qt.AlignCenter)
             self.blocks.setCellWidget(index, 4, action_cell)
 
@@ -433,34 +435,50 @@ class AvailabilityPage(Page):
         types = [r[0] for r in db.rows(
             "SELECT DISTINCT room_type FROM classrooms ORDER BY room_type"
         )]
-        chosen = self.room_type.currentData()
+        chosen=self.room_type.currentText().strip()
         self.room_type.blockSignals(True)
         self.room_type.clear()
         self.room_type.addItem("All room types", None)
         for room_type in types:
             self.room_type.addItem(room_type, room_type)
-        self.room_type.setCurrentIndex(max(0, self.room_type.findData(chosen)))
+        match=self.room_type.findText(chosen,Qt.MatchFixedString)
+        self.room_type.setCurrentIndex(max(0,match))
         self.room_type.blockSignals(False)
+        selected_type=self.room_type.currentData()
         if not self.editor.isHidden():
             self._reload_resources()
             self._reload_blocks()
         for grid in self.grids:
             clear_layout(grid)
-        start, end = self.start.currentData(), self.end.currentData()
-        if end <= start:
-            self.summary.setText("Please choose an end time later than the start time.")
+        try:
+            start=parse_time(self.start.currentText())
+            end=parse_time(self.end.currentText())
+        except ValueError:
+            self.summary.setText("Enter a valid start and end time (e.g. 8:15 AM).")
             for counter in self.counts:
                 counter.setText("—")
             return
-        day = self.day.currentData()
+        if end <= start or start < logic.CAL_START or end > logic.CAL_END:
+            self.summary.setText("Choose a time between 7:00 AM and 5:00 PM, with end later than start.")
+            for counter in self.counts:
+                counter.setText("—")
+            return
+        typed_day=self.day.currentText().strip().casefold()
+        day=next((code for code,name in db.DAYS
+                  if typed_day in (code.casefold(),name.casefold())),None)
+        if day is None:
+            self.summary.setText("Choose a valid day from Monday through Saturday.")
+            for counter in self.counts:
+                counter.setText("—")
+            return
         schedules = logic.schedule_rows(self.win.term_id())
         loads = logic.faculty_loads(self.win.term_id())
         needle = self.search.text().strip().casefold()
         counts = []
         for index, (kind, table) in enumerate((("faculty", "faculty"), ("room", "classrooms"))):
             records = db.rows(f"SELECT * FROM {table} ORDER BY name")
-            if kind == "room" and self.room_type.currentData():
-                records = [r for r in records if r["room_type"] == self.room_type.currentData()]
+            if kind == "room" and selected_type:
+                records = [r for r in records if r["room_type"] == selected_type]
             if needle:
                 records = [r for r in records if needle in r["name"].casefold()]
             free = 0
