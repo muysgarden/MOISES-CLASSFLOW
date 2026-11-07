@@ -120,7 +120,7 @@ class ReportsPage(Page):
                 self.room,db.rows('SELECT id,name FROM classrooms ORDER BY name'),
                 'All rooms',True
             )
-        self.render()
+        self.populate_sections()
 
     def _show_relevant_filters(self,mode):
         active={
@@ -663,6 +663,8 @@ class ReportsPage(Page):
 
     def _group_details(self, name, rows):
         esc=lambda value: html.escape(str(value))
+        if not rows:
+            return '<b>No matching saved classes for the selected term.</b>'
         mode=self.report.currentText()
         if mode in ('Class Schedules','Section Schedules'):
             # The program belongs to this particular section, not the filter that
@@ -804,7 +806,7 @@ class ReportsPage(Page):
         if path:
             printer=QPrinter(QPrinter.HighResolution); printer.setOrientation(QPrinter.Landscape); printer.setOutputFormat(QPrinter.PdfFormat); printer.setOutputFileName(path)
             document = self.document()
-            if self.report.currentText() in REPORTS[:4]:
+            if self.report.currentText() in EXPORTABLE_SCHEDULES:
                 self.print_schedule_pdf(printer, document)
             else:
                 document.print_(printer)
@@ -812,7 +814,12 @@ class ReportsPage(Page):
 
     def print_report(self):
         printer=QPrinter(QPrinter.HighResolution); printer.setOrientation(QPrinter.Landscape)
-        if QPrintDialog(printer,self).exec_(): self.document().print_(printer)
+        if QPrintDialog(printer,self).exec_():
+            document=self.document()
+            if self.report.currentText() in EXPORTABLE_SCHEDULES:
+                self.print_schedule_pdf(printer,document)
+            else:
+                document.print_(printer)
 
     def print_schedule_pdf(self, printer, document):
         # The same document is used for printing and saving PDF.
