@@ -128,6 +128,15 @@ class SchedulesPage(Page):
         layout.addWidget(hint)
         self.status = Banner("good", "Choose the class details to check availability.")
         layout.addWidget(self.status)
+        self.suggestion_hint = QLabel("")
+        self.suggestion_hint.setWordWrap(True)
+        self.suggestion_hint.setStyleSheet(
+            "QLabel { color:#425675; background:#F0F5FC; "
+            "border:1px solid #DCE5F2; border-radius:9px; padding:10px 13px; "
+            "font-size:12px; }"
+        )
+        self.suggestion_hint.hide()
+        layout.addWidget(self.suggestion_hint)
         actions = QHBoxLayout()
         actions.addStretch()
         self.cancel_button = QPushButton("Cancel")
@@ -274,6 +283,43 @@ class SchedulesPage(Page):
             ("days", "class days"), ("start", "start time"), ("end", "end time"),
         ) if values.get(key) is None]
 
+    def _update_suggestions(self, values):
+        # Suggestions only appear once the assignment's essential details are valid.
+        if any(values.get(key) is None for key in (
+            'subject_id','section_id','faculty_id'
+        )):
+            self.suggestion_hint.hide()
+            return
+        start,end=values.get('start'),values.get('end')
+        duration=end-start if start is not None and end is not None and end>start else 90
+        results=logic.suggest_schedule_slots(
+            self.win.term_id(),
+            values['subject_id'],values['section_id'],values['faculty_id'],
+            duration=duration,
+            preferred_days=values.get('days','').split(',') if values.get('days') else (),
+            preferred_start=start,
+            preferred_room_id=values.get('room_id'),
+            exclude_ids=self.replace_ids,
+            limit=3,
+        )
+        if results:
+            lines=[
+                f"{dict(db.DAYS).get(option['day'],option['day'])}: "
+                f"{logic.fmt(option['start_min'])}–{logic.fmt(option['end_min'])} "
+                f"· {option['room']}"
+                for option in results
+            ]
+            self.suggestion_hint.setText(
+                "Suggested available options (choose one manually):\n"
+                + "\n".join(f"• {line}" for line in lines)
+            )
+        else:
+            self.suggestion_hint.setText(
+                "No conflict-free alternative found within 7:00 AM–5:00 PM "
+                "for the selected faculty and section."
+            )
+        self.suggestion_hint.show()
+
     def preview(self, *_):
         if not hasattr(self, "status"):
             return
@@ -288,6 +334,7 @@ class SchedulesPage(Page):
             if course else "Course: Choose a section to identify its program"
         )
         missing = self._missing(values)
+        self._update_suggestions(values)
         if missing:
             self.status.title.setText("Complete the assignment details")
             self.status.text.setText("Select or enter: " + ", ".join(missing) + ".")
