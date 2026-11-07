@@ -14,6 +14,7 @@ from ui.academic import ENTITIES
 from ui.widgets import label, set_kind
 from ui.dashboard import DashboardPage
 from ui.profile import AccountSettingsPage
+from ui.appearance import apply_mode, save_mode, current_mode
 
 PAGE_CLASSES = {
     "academic": "AcademicPage", "availability": "AvailabilityPage", "schedules": "SchedulesPage",
@@ -208,6 +209,7 @@ class MainWindow(QMainWindow):
             self.stack.addWidget(self.pages[key])
         self.pages["settings"] = AccountSettingsPage(self.username, self)
         self.pages["settings"].username_changed.connect(self._update_account_name)
+        self.pages["settings"].appearance_changed.connect(self.change_appearance)
         self.stack.addWidget(self.pages["settings"])
         self.go("dashboard")
 
@@ -468,6 +470,17 @@ class MainWindow(QMainWindow):
         self._msg_token += 1
         token = self._msg_token
         QTimer.singleShot(6000, lambda: self.msg.hide() if token == self._msg_token else None)
+
+    def change_appearance(self, mode):
+        if mode not in ("light", "dark"):
+            return
+        save_mode(mode)
+        apply_mode(mode)
+        self.pages["settings"].refresh_appearance()
+        self.notify(
+            "Dark mode enabled." if mode == "dark" else "Light mode enabled.",
+            "success",
+        )
 
     def open_profile(self):
         self.go("settings")
