@@ -1,4 +1,5 @@
 import sys
+import sqlite3
 from PyQt5.QtWidgets import QApplication, QDialog, QMessageBox
 import auth
 import db
@@ -15,7 +16,7 @@ def main():
     app.setStyleSheet(build_qss())
     try:
         db.init(active_workspace_path())
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, sqlite3.DatabaseError) as exc:
         QMessageBox.critical(None, "Cannot open ClassFlow dataset", str(exc))
         return 1
     auth.init()
