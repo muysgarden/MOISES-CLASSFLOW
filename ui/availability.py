@@ -46,7 +46,7 @@ def searchable_combo():
 def time_combo():
     """Quarter-hour suggestions plus free entry for exact minutes."""
     combo = searchable_combo()
-    for minute in range(7 * 60, 20 * 60 + 1, 15):
+    for minute in range(logic.CAL_START, logic.CAL_END + 1, 15):
         combo.addItem(logic.fmt(minute), minute)
     return combo
 
