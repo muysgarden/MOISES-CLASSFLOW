@@ -13,7 +13,7 @@ from ui.widgets import Page, Card, Combo, CalendarWidget, BarChart, Banner, butt
 import db
 import logic
 
-REPORTS=['Class Schedules','Faculty Schedules','Section Schedules','Classroom Schedules','Room Utilization Schedule','Room Utilization','Faculty Teaching Load','Conflict Reports','Available Rooms']
+REPORTS=['Class Schedules','Faculty Schedules','Classroom Schedules','Room Utilization','Faculty Teaching Load','Available Rooms']
 TIMETABLE_REPORTS=('Class Schedules','Faculty Schedules','Section Schedules','Classroom Schedules')
 EXPORTABLE_SCHEDULES=TIMETABLE_REPORTS+('Room Utilization Schedule',)
 YEAR_LEVEL_COLORS = {
@@ -55,7 +55,7 @@ class ReportsPage(Page):
         filter_card.body(margins=(18,12,18,12)).addLayout(row)
         self.report=Combo()
         self.report.addItems(REPORTS)
-        self.report.setCurrentText('Section Schedules')
+        self.report.setCurrentText('Class Schedules')
         row.addWidget(labeled('Report Type',self.report),1)
         self.program=Combo()
         self.section=Combo()
