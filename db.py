@@ -290,7 +290,7 @@ def seed(reset=False):
     add("CS 205", "BSCS 2A", "Santos", "Room 103", "Mon,Wed", hm(8), hm(9, 30))
     add("GE 108", "BSCS 2A", "Garcia", "Room 103", "Tue,Thu", hm(13), hm(14, 30))
     add("MATH 204", "BSCS 2A", "Dizon", "Room 203", "Mon,Thu", hm(15), hm(16, 30))
-    add("CS 220", "BSCS 2A", "Lim", "Room 204", "Fri", hm(14, 30), hm(17, 30))
+    add("CS 220", "BSCS 2A", "Lim", "Room 204", "Fri", hm(14), hm(17))
     add("IT 214", "BSIT 2B", "Cruz", "Room 204", "Tue,Thu", hm(10), hm(11, 30))
     add("IT 214", "BSIT 2A", "Cruz", "Room 204", "Mon,Wed", hm(10), hm(11, 30))
     add("CS 310", "BSCS 3A", "Lim", "Room 203", "Mon,Fri", hm(13), hm(14, 30))
@@ -303,7 +303,7 @@ def seed(reset=False):
     add("IT 301", "BSIT 3A", "Lim", "Room 204", "Tue", hm(10), hm(11, 30))
     add("GE 108", "BSCS 3A", "Santos", "Room 103", "Mon", hm(14), hm(15, 30))
     add("GE 108", "BSCS 1B", "Garcia", "Room 104", "Mon,Wed", hm(13), hm(14, 30))
-    add("CS 120", "BSCS 1A", "Lim", "Room 204", "Wed", hm(19), hm(21))
+    add("CS 120", "BSCS 1A", "Lim", "Room 204", "Wed", hm(7), hm(9))
 
     c.execute("""UPDATE subjects SET preferred_room_id = COALESCE(
                      (SELECT room_id FROM schedules WHERE schedules.subject_id=subjects.id ORDER BY id LIMIT 1),
