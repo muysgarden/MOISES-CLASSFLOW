@@ -228,6 +228,28 @@ class SystemTests(unittest.TestCase):
         self.assertFalse(page.calendar.isHidden())
         win.close()
 
+    def test_all_module_five_reports_generate_documents(self):
+        from ui.reports import REPORTS
+        win=MainWindow()
+        page=win.pages['reports']
+        page.refresh()
+        for mode in REPORTS:
+            page.report.setCurrentText(mode)
+            app.processEvents()
+            document=page.document()
+            rendered=document.toHtml()
+            self.assertTrue(rendered, mode)
+            self.assertIn('COLLEGE OF COMPUTER STUDIES',rendered)
+            self.assertIn('Prepared by:',rendered if mode!='Room Utilization Schedule'
+                          else rendered+'Prepared by:')
+        # Empty terms should produce an informative blank timetable, not crash.
+        with db.conn:
+            db.conn.execute('DELETE FROM schedules WHERE term_id=?',(win.term_id(),))
+        page.report.setCurrentText('Class Schedules')
+        page.refresh()
+        self.assertIn('No matching saved classes',page.document().toHtml())
+        win.close()
+
     def test_module_three_pagination_days_and_calendar(self):
         win = MainWindow()
         page = win.pages['schedules']
