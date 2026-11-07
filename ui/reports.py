@@ -599,6 +599,7 @@ class ReportsPage(Page):
 
         document = QTextDocument()
         document.setHtml(self.room_utilization_html(all_rooms=True))
+        self._lock_timetable_columns(document)
         printer = QPrinter(QPrinter.HighResolution)
         printer.setPaperSize(QPrinter.A4)
         printer.setOrientation(QPrinter.Portrait)
@@ -790,6 +791,23 @@ class ReportsPage(Page):
             +self._print_footer()+'</body></html>'
         )
 
+    def _lock_timetable_columns(self, document):
+        # QTextDocument does not consistently honor CSS table-layout:fixed.
+        # Explicit column constraints keep six weekdays equally wide even
+        # when some days are empty.
+        frames=[document.rootFrame()]
+        while frames:
+            frame=frames.pop()
+            if isinstance(frame,QTextTable) and frame.columns()==7:
+                fmt=frame.format()
+                fmt.setWidth(QTextLength(QTextLength.PercentageLength,100))
+                fmt.setColumnWidthConstraints(
+                    [QTextLength(QTextLength.PercentageLength,19)]
+                    +[QTextLength(QTextLength.PercentageLength,13.5)]*6
+                )
+                frame.setFormat(fmt)
+            frames.extend(frame.childFrames())
+
     def document(self):
         doc=QTextDocument()
         mode=self.report.currentText()
@@ -800,6 +818,8 @@ class ReportsPage(Page):
         else:
             doc.setHtml(self._timetable_html() if mode in TIMETABLE_REPORTS
                         else self._table_report_html())
+        if mode in EXPORTABLE_SCHEDULES:
+            self._lock_timetable_columns(doc)
         return doc
 
     def export_pdf(self):
