@@ -74,7 +74,7 @@ class LoginDialog(QDialog):
         # A roomier card on typical desktops, while smaller screens can
         # still shrink the width without clipping the form.
         card = QFrame(); card.setMinimumSize(0, 410)
-        card.setMaximumWidth(920)
+        card.setMaximumWidth(1000)
         card.setStyleSheet('QFrame { border: none; }')
         row = QHBoxLayout(card); row.setContentsMargins(0,0,0,0); row.setSpacing(0)
         photo = Photo('building.jpg', 95); photo.setMinimumWidth(170); photo.setMaximumWidth(330); photo.setProperty('rounded',True)
