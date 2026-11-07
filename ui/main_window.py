@@ -389,6 +389,9 @@ class MainWindow(QMainWindow):
             page.open(**kw)
         else:
             page.refresh()
+        # Pages can rebuild cards after navigation; recolor new widgets too.
+        if current_mode() == "dark":
+            QTimer.singleShot(0, lambda: apply_mode("dark"))
 
     def refresh_current(self):
         page = self.stack.currentWidget()
@@ -477,6 +480,9 @@ class MainWindow(QMainWindow):
         save_mode(mode)
         apply_mode(mode)
         self.pages["settings"].refresh_appearance()
+        validation=self.pages.get("validation")
+        if validation is not None and hasattr(validation,"render"):
+            validation.render()
         self.notify(
             "Dark mode enabled." if mode == "dark" else "Light mode enabled.",
             "success",
