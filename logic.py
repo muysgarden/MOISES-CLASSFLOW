@@ -279,3 +279,105 @@ def progress(term_id):
     done = db.row("SELECT COUNT(*) AS n FROM (SELECT DISTINCT section_id, subject_id FROM schedules WHERE term_id=?)",
                   (term_id,))["n"]
     return min(100, round(100 * done / need)) if need else 0
+
+
+def suggest_schedule_slots(term_id, subject_id, section_id, faculty_id,
+                           duration=90, preferred_days=(), preferred_start=None,
+                           preferred_room_id=None, exclude_ids=(), limit=3):
+    """Rank real conflict-free day/time/room options within school hours.
+
+    These are suggestions, not assignments. Never save them automatically.
+    Blocked faculty/room windows and existing assignments are respected.
+    """
+    if any(x is None for x in (subject_id, section_id, faculty_id)):
+        return []
+    subject=db.row("SELECT * FROM subjects WHERE id=?",(subject_id,))
+    section=db.row("SELECT * FROM sections WHERE id=?",(section_id,))
+    faculty=db.row("SELECT * FROM faculty WHERE id=?",(faculty_id,))
+    if not (subject and section and faculty):
+        return []
+    if not db.row(
+        "SELECT 1 FROM subject_programs WHERE subject_id=? AND program_id=?",
+        (subject_id,section['program_id'])
+    ):
+        return []
+    rooms=db.rows("SELECT id,name,room_type FROM classrooms ORDER BY name")
+    if not rooms:
+        return []
+    current=[
+        record for record in schedule_rows(term_id)
+        if record["id"] not in set(exclude_ids)
+    ]
+    blocked=[]
+    if db.row("SELECT 1 FROM sqlite_master WHERE type='table' AND name='unavailable'"):
+        blocked=db.rows(
+            "SELECT kind,resource_id,day,start_min,end_min FROM unavailable "
+            "WHERE (kind='faculty' AND resource_id=?) OR kind='room'",
+            (faculty_id,)
+        )
+    try:
+        duration=int(duration)
+    except (TypeError,ValueError):
+        duration=90
+    duration=max(30,min(240,((duration+29)//30)*30))
+    if duration>CAL_END-CAL_START:
+        return []
+    wanted_days=set(preferred_days or ())
+    candidates=[]
+    for day_index,day in enumerate(DAY_CODES):
+        for start in range(CAL_START,CAL_END-duration+1,30):
+            end=start+duration
+            faculty_busy=any(
+                record['day']==day and
+                (record['faculty_id']==faculty_id or record['section_id']==section_id) and
+                overlap(start,end,record['start_min'],record['end_min'])
+                for record in current
+            )
+            faculty_blocked=any(
+                block['kind']=='faculty' and block['day']==day and
+                overlap(start,end,block['start_min'],block['end_min'])
+                for block in blocked
+            )
+            if faculty_busy or faculty_blocked:
+                continue
+            for room in rooms:
+                if subject['room_type']=='Laboratory' and room['room_type']!='Laboratory':
+                    continue
+                room_busy=any(
+                    record['day']==day and record['room_id']==room['id'] and
+                    overlap(start,end,record['start_min'],record['end_min'])
+                    for record in current
+                )
+                room_blocked=any(
+                    block['kind']=='room' and block['resource_id']==room['id'] and
+                    block['day']==day and
+                    overlap(start,end,block['start_min'],block['end_min'])
+                    for block in blocked
+                )
+                if room_busy or room_blocked:
+                    continue
+                score=day_index*6+(start-CAL_START)/30
+                if wanted_days:
+                    score+=0 if day in wanted_days else 35
+                if preferred_start is not None:
+                    score+=abs(start-preferred_start)/30*2
+                if preferred_room_id is not None and room['id']!=preferred_room_id:
+                    score+=8
+                if subject['preferred_room_id'] is not None and room['id']!=subject['preferred_room_id']:
+                    score+=4
+                candidates.append({
+                    'day':day,'start_min':start,'end_min':end,
+                    'room_id':room['id'],'room':room['name'],'score':score,
+                })
+    candidates.sort(key=lambda item:(item['score'],item['day'],item['start_min'],item['room']))
+    results=[]
+    used=set()
+    for item in candidates:
+        signature=(item['day'],item['start_min'],item['end_min'])
+        if signature in used:
+            continue
+        used.add(signature)
+        results.append(item)
+        if len(results)>=limit:
+            break
+    return results
