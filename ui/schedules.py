@@ -357,6 +357,12 @@ class SchedulesPage(Page):
         ) else "good" if not issues else "warn")
 
     def save(self):
+        if self.win.term_id() is None:
+            self.win.notify(
+                "Create an Academic Term in Academic Records before saving schedules.",
+                "warning",
+            )
+            return
         values = self.values()
         missing = self._missing(values)
         if missing:
