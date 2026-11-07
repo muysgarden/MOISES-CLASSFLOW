@@ -2,7 +2,7 @@ import html
 import csv
 import re
 from pathlib import Path
-from PyQt5.QtCore import QStandardPaths, QRectF, Qt
+from PyQt5.QtCore import QStandardPaths, QRectF, Qt, QPointF
 from PyQt5.QtGui import QPainter, QTextDocument, QTextLength, QTextTable, QColor, QFont, QFontMetrics, QPen
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QFileDialog
@@ -991,7 +991,7 @@ class ReportsPage(Page):
             write(QRectF(left,footer_y,table_width,15),'Prepared by:',9,False,
                   Qt.AlignLeft|Qt.AlignVCenter)
             painter.setPen(QPen(ink,0.8))
-            painter.drawLine(left,footer_y+39,left+165,footer_y+39)
+            painter.drawLine(QPointF(left,footer_y+39),QPointF(left+165,footer_y+39))
             if not rows:
                 write(QRectF(left,grid_top+header_height+120,table_width,24),
                       'No saved classes for the selected term',10)
