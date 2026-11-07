@@ -5,13 +5,13 @@ import db
 from ui.login import LoginDialog
 from ui.availability import init_availability
 from ui.main_window import MainWindow
-from ui.style import build_qss
+from ui.appearance import apply_mode
 
 
 def main():
     app=QApplication(sys.argv)
     app.setApplicationName('ClassFlow')
-    app.setStyleSheet(build_qss())
+    apply_mode()
     db.init(); auth.init(); init_availability()
     # No destructive reset flag: existing records are never silently erased.
     login = LoginDialog()
