@@ -189,11 +189,8 @@ class AccountSettingsPage(QWidget):
 
     def _data_section(self):
         scroll, layout = self._section(
-            "Data management", "Remove demonstration records when testing is complete."
+            "Data management", "Save, open, or create separate ClassFlow datasets."
         )
-        self.demo_count = caption("", "settingsSectionTitle")
-        layout.addWidget(self.demo_count)
-        layout.addSpacing(12)
         layout.addWidget(caption("Dataset workspaces", "settingsSectionTitle"))
         dataset_info = caption(
             "Save a complete copy, start with blank academic records, or select "
@@ -220,6 +217,8 @@ class AccountSettingsPage(QWidget):
         layout.addLayout(actions)
         layout.addSpacing(22)
         layout.addWidget(caption("Demonstration data", "settingsSectionTitle"))
+        self.demo_count = caption("", "settingsHint")
+        layout.addWidget(self.demo_count)
         warning = caption(
             "Only records explicitly marked when ClassFlow created its demo dataset "
             "are eligible. Existing records from older versions are not assumed to be samples. "
