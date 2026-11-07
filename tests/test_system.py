@@ -644,6 +644,13 @@ class SystemTests(unittest.TestCase):
                         grid_tables.append(child)
                     frames.append(child)
             self.assertTrue(grid_tables)
+            widths=[
+                constraint.value(100)
+                for constraint in grid_tables[0].format().columnWidthConstraints()
+            ]
+            self.assertEqual(len(widths),7)
+            self.assertAlmostEqual(widths[0],19)
+            self.assertTrue(all(abs(width-13.5)<0.01 for width in widths[1:]))
             self.assertGreaterEqual(
                 pdf_document.documentLayout().frameBoundingRect(grid_tables[0]).width(),
                 pdf_document.textWidth()*0.95,
