@@ -398,9 +398,6 @@ class SystemTests(unittest.TestCase):
 
     def test_bsis_is_not_supported_and_unlinked_legacy_row_is_cleaned(self):
         self.assertEqual([code for code,_ in db.CCS_PROGRAMS],['BSCS','BSIT'])
-        db.conn.execute(
-            "INSERT INTO programs(code,name) VALUES('BSIS','BS Information Systems')")
-        db.conn.commit()
         db.conn.close()
         with tempfile.TemporaryDirectory() as directory:
             path=os.path.join(directory,'legacy.db')
