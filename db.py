@@ -235,7 +235,7 @@ def seed(reset=False):
     c.execute("INSERT INTO terms(name, is_current) VALUES('1st Semester, A.Y. 2025–2026', 1)")
     c.execute("INSERT INTO terms(name, is_current) VALUES('2nd Semester, A.Y. 2025–2026', 0)")
     term = row("SELECT id FROM terms WHERE is_current=1")["id"]
-    c.execute("INSERT INTO periods(name, start_min, end_min) VALUES('Regular Classes', ?, ?)", (hm(7), hm(20)))
+    c.execute("INSERT INTO periods(name, start_min, end_min) VALUES('Regular Classes', ?, ?)", (hm(7), hm(17)))
 
     prog = {}
     for code, name in CCS_PROGRAMS:
