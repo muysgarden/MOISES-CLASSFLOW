@@ -30,8 +30,13 @@ class LoginDialog(QDialog):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('ClassFlow')
-        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
-        self.setWindowState(self.windowState() | Qt.WindowFullScreen)
+        # Maximized keeps the normal Windows title bar controls available.
+        # True fullscreen/frameless mode hides minimize and maximize buttons.
+        self.setWindowFlags(
+            Qt.Window | Qt.WindowMinimizeButtonHint |
+            Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint
+        )
+        self.setWindowState(self.windowState() | Qt.WindowMaximized)
         self.resize(1100, 660)
         self.setMinimumSize(640, 420)
         self.first = not auth.has_users()
