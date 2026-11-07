@@ -315,7 +315,7 @@ class ReportsPage(Page):
             ]
         elif mode=='Available Rooms':
             from ui.availability import unavailable
-            self.headers=['Room','Capacity','Day','From','To']
+            self.headers=['Room','Day','From','To']
             self.output=[]
             for room in db.rows('SELECT * FROM classrooms'):
                 if rid is not None and room['id']!=rid:
@@ -329,7 +329,7 @@ class ReportsPage(Page):
                                 for r in rows
                             )):
                             self.output.append([
-                                room['name'],room['capacity'],day,
+                                room['name'],day,
                                 logic.fmt(start),logic.fmt(finish)
                             ])
         self.table.setColumnCount(len(self.headers))
