@@ -7,8 +7,7 @@ from pathlib import Path
 DAYS = [("Mon", "Monday"), ("Tue", "Tuesday"), ("Wed", "Wednesday"),
         ("Thu", "Thursday"), ("Fri", "Friday"), ("Sat", "Saturday")]
 SUBJECT_TYPES = [("Lecture", "Lecture"), ("Laboratory", "Laboratory"), ("Lecture + Lab", "Lecture + Lab")]
-CCS_PROGRAMS = [("BSCS", "BS Computer Science"), ("BSIT", "BS Information Technology"),
-                ("BSIS", "BS Information Systems")]
+CCS_PROGRAMS = [("BSCS", "BS Computer Science"), ("BSIT", "BS Information Technology")]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS programs(
@@ -199,7 +198,9 @@ def init(path=None):
         if existing and not collision:
             conn.execute("UPDATE classrooms SET name=?, floor=? WHERE id=?", (new_name, floor, existing["id"]))
 
-    conn.execute("""DELETE FROM programs WHERE code='BSEMC'
+    # Remove legacy unsupported programs only when they have no linked data.
+    # Do not silently orphan or reassign historical sections/subjects.
+    conn.execute("""DELETE FROM programs WHERE code IN ('BSEMC', 'BSIS')
                     AND NOT EXISTS (SELECT 1 FROM sections WHERE sections.program_id=programs.id)
                     AND NOT EXISTS (SELECT 1 FROM subject_programs WHERE subject_programs.program_id=programs.id)""")
     conn.execute("""UPDATE subjects SET preferred_room_id = COALESCE(
