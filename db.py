@@ -168,6 +168,18 @@ def init(path=None):
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    # Both CCS programs are permanent reference data, not demo academic records.
+    # Preserve existing IDs/relationships in older databases.
+    for code, name in CCS_PROGRAMS:
+        conn.execute(
+            "INSERT OR IGNORE INTO programs(code,name) VALUES(?,?)",
+            (code, name),
+        )
+    # Demo cleanup must never remove either permanent CCS program.
+    conn.execute(
+        "DELETE FROM sample_records WHERE table_name='programs' AND "
+        "record_id IN (SELECT id FROM programs WHERE code IN ('BSCS','BSIT'))"
+    )
     faculty_columns = {r["name"] for r in conn.execute("PRAGMA table_info(faculty)")}
     if "email" not in faculty_columns:
         conn.execute("ALTER TABLE faculty ADD COLUMN email TEXT NOT NULL DEFAULT ''")
@@ -210,7 +222,10 @@ def row(sql, params=()):
 
 
 def is_empty():
-    return row("SELECT COUNT(*) AS n FROM programs")["n"] == 0
+    # Permanent BSCS/BSIT reference rows are not user-entered academic data.
+    return all(row(f"SELECT COUNT(*) AS n FROM {table}")["n"] == 0
+               for table in ("sections", "subjects", "faculty", "classrooms",
+                             "terms", "schedules"))
 
 
 def seed(reset=False):
@@ -239,7 +254,8 @@ def seed(reset=False):
 
     prog = {}
     for code, name in CCS_PROGRAMS:
-        prog[code] = c.execute("INSERT INTO programs(code, name) VALUES(?,?)", (code, name)).lastrowid
+        c.execute("INSERT OR IGNORE INTO programs(code, name) VALUES(?,?)", (code, name))
+        prog[code] = row("SELECT id FROM programs WHERE code=?", (code,))["id"]
 
     subj = {}
     for code, title, units, typ, plist, rt in [
