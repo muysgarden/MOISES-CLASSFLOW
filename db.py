@@ -234,6 +234,11 @@ def seed(reset=False):
         for t in ("schedules", "subject_programs", "subjects", "sections", "faculty", "classrooms",
                   "programs", "periods", "terms"):
             c.execute(f"DELETE FROM {t}")
+        c.execute("DELETE FROM sample_subject_links")
+        c.execute("DELETE FROM sample_records")
+        for code, name in CCS_PROGRAMS:
+            c.execute("INSERT OR IGNORE INTO programs(code,name) VALUES(?,?)",
+                      (code, name))
     if not is_empty():
         return False
     original_ids = {
