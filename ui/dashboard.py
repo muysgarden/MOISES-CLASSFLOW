@@ -212,7 +212,7 @@ class DashboardPage(QScrollArea):
         term_id = self.win.term_id()
         self.term_label.setText(self.win.term_name())
         counts = {
-            "programs": db.row("SELECT COUNT(*) FROM programs")[0],
+            "programs": db.row("SELECT COUNT(*) FROM programs WHERE code IN ('BSCS','BSIT')")[0],
             "sections": db.row("SELECT COUNT(*) FROM sections")[0],
             "faculty": db.row("SELECT COUNT(*) FROM faculty")[0],
             "rooms": db.row("SELECT COUNT(*) FROM classrooms")[0],
