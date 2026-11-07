@@ -184,6 +184,47 @@ class SystemTests(unittest.TestCase):
         self.assertFalse(page.table.isHidden())
         win.close()
 
+    def test_module_five_all_and_individual_schedule_exports(self):
+        win = MainWindow()
+        page = win.pages['reports']
+        page.refresh()
+
+        page.report.setCurrentText('Class Schedules')
+        self.assertIsNone(page.section.currentData())
+        self.assertEqual(len(page.report_rows), len(logic.schedule_rows(win.term_id())))
+        self.assertFalse(page.table.isHidden())
+        self.assertTrue(page.calendar.isHidden())
+        self.assertEqual(page.table.columnCount(), 6)
+        pdf_html = page.document().toHtml()
+        self.assertIn('MONDAY', pdf_html)
+        self.assertIn('SATURDAY', pdf_html)
+        self.assertIn('Section:', pdf_html)
+        self.assertIn('Prepared by:', pdf_html)
+
+        page.report.setCurrentText('Faculty Schedules')
+        self.assertIsNone(page.faculty.currentData())
+        self.assertFalse(page.table.isHidden())
+        page.faculty.setCurrentIndex(1)
+        faculty_id = page.faculty.currentData()
+        self.assertTrue(all(row['faculty_id']==faculty_id for row in page.report_rows))
+        self.assertFalse(page.calendar.isHidden())
+        faculty_pdf=page.document().toHtml()
+        self.assertIn('Faculty:', faculty_pdf)
+        self.assertIn('CLASS SCHEDULE', faculty_pdf)
+
+        page.report.setCurrentText('Section Schedules')
+        self.assertIsNone(page.section.currentData())
+        self.assertFalse(page.table.isHidden())
+        page.section.setCurrentIndex(1)
+        self.assertFalse(page.calendar.isHidden())
+
+        page.report.setCurrentText('Classroom Schedules')
+        self.assertIsNone(page.room.currentData())
+        self.assertFalse(page.table.isHidden())
+        page.room.setCurrentIndex(1)
+        self.assertFalse(page.calendar.isHidden())
+        win.close()
+
     def test_module_three_pagination_days_and_calendar(self):
         win = MainWindow()
         page = win.pages['schedules']

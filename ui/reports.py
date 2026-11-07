@@ -96,7 +96,7 @@ class ReportsPage(Page):
         self.report_rows=[r for r in rows if (sections is None or r['section_id'] in sections) and (sid is None or r['section_id']==sid) and (fid is None or r['faculty_id']==fid) and (rid is None or r['room_id']==rid)]
         # All-class and all-faculty views contain overlapping unrelated groups;
         # display the assignment list until a specific faculty member is chosen.
-        grid_mode=mode in ('Section Schedules','Classroom Schedules') or (mode=='Faculty Schedules' and fid is not None)
+        grid_mode=(mode=='Section Schedules' and sid is not None) or (mode=='Classroom Schedules' and rid is not None) or (mode=='Faculty Schedules' and fid is not None)
         self.calendar.set_rows(self.report_rows,'section' if mode in ['Faculty Schedules','Classroom Schedules'] else 'room')
         self.main_card.title_label.setText(mode)
         selected=(self.faculty.currentText() if mode=='Faculty Schedules' and fid is not None
@@ -256,9 +256,9 @@ class ReportsPage(Page):
                         # Overlaps cannot be expressed as independent merged
                         # cells in the same column; attach a warning to the
                         # initial occupied block instead of hiding the meeting.
-                        anchor=next((k for k,v in starts.items() if k<=first and
-                                     k+v[1]*30>first),first)
-                        if anchor in starts:
+                        anchor=next((k for k,v in starts.items()
+                                     if k < last and k+v[1]*30 > first),None)
+                        if anchor is not None:
                             starts[anchor][2].append(meeting)
                         continue
                     starts[first]=[meeting,len(slots),[meeting]]
@@ -303,7 +303,7 @@ class ReportsPage(Page):
             )
         return (
             '<html><head><style>'+self._print_styles()+'</style></head><body>'
-            +'<div style="page-break-after:always;"></div>'.join(pages)
+            +'<p style="page-break-before:always;"></p>'.join(pages)
             +'</body></html>'
         )
 
