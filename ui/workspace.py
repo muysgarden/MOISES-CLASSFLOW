@@ -72,6 +72,11 @@ def create_blank_workspace(destination, username):
     fresh=sqlite3.connect(str(target))
     try:
         fresh.executescript(db.SCHEMA)
+        for code, name in db.CCS_PROGRAMS:
+            fresh.execute(
+                "INSERT INTO programs(code,name) VALUES(?,?)",
+                (code, name),
+            )
         fresh.execute(
             "CREATE TABLE IF NOT EXISTS users("
             "username TEXT PRIMARY KEY,salt TEXT NOT NULL,digest TEXT NOT NULL)"
