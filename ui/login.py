@@ -73,11 +73,15 @@ class LoginDialog(QDialog):
         center = QHBoxLayout(); center.addStretch()
         # A roomier card on typical desktops, while smaller screens can
         # still shrink the width without clipping the form.
-        card = QFrame(); card.setMinimumSize(0, 410)
+        card = QFrame()
+        card.setMinimumHeight(410)
         card.setMaximumWidth(1000)
         card.setStyleSheet('QFrame { border: none; }')
+        self.login_card = card
         row = QHBoxLayout(card); row.setContentsMargins(0,0,0,0); row.setSpacing(0)
-        photo = Photo('building.jpg', 95); photo.setMinimumWidth(170); photo.setMaximumWidth(330); photo.setProperty('rounded',True)
+        photo = Photo('building.jpg', 95)
+        photo.setProperty('rounded', True)
+        self.login_photo = photo
         pl = QVBoxLayout(photo); pl.addStretch()
         logo = QLabel(); logo.setAlignment(Qt.AlignCenter)
         pix = QPixmap(str(ASSETS/'logo.png')) if (ASSETS/'logo.png').exists() else QPixmap()
@@ -103,7 +107,31 @@ class LoginDialog(QDialog):
         eye=self.password.addAction(QIcon(icon),QLineEdit.TrailingPosition); eye.setToolTip('Show / hide password'); eye.triggered.connect(self.toggle_password); form.addWidget(self.password)
         self.submit=QPushButton('CREATE ACCOUNT' if self.first else 'LOGIN'); self.submit.setObjectName('loginButton'); self.submit.clicked.connect(self.login); form.addWidget(self.submit)
         self.password.returnPressed.connect(self.login); self.username.returnPressed.connect(self.password.setFocus)
-        form.addStretch(); center.addWidget(card); center.addStretch(); outer.addLayout(center); outer.addStretch()
+        form.addStretch()
+        center.addWidget(card)
+        center.addStretch()
+        outer.addLayout(center)
+        outer.addStretch()
+        self._resize_login_card()
+
+    def _resize_login_card(self):
+        """Size the *actual* centered card, not only its maximum width."""
+        if not hasattr(self, 'login_card'):
+            return
+        available = max(0, self.width() - 48)
+        width = min(1000, available)
+        if width <= 0:
+            return
+        if self.login_card.width() != width:
+            self.login_card.setFixedWidth(width)
+        # Keep the photo around 30% so the input panel has real breathing room.
+        photo_width = min(320, max(150, int(width * .30)))
+        if self.login_photo.width() != photo_width:
+            self.login_photo.setFixedWidth(photo_width)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._resize_login_card()
 
     def toggle_password(self):
         self.password.setEchoMode(QLineEdit.Normal if self.password.echoMode()==QLineEdit.Password else QLineEdit.Password)
