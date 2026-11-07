@@ -1,7 +1,9 @@
 from pathlib import Path
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QPoint, QRectF
 from PyQt5.QtGui import QPainter, QPixmap, QColor, QPainterPath, QIcon, QPen
-from PyQt5.QtWidgets import QDialog, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QPushButton
+from PyQt5.QtWidgets import (QDialog, QFrame, QHBoxLayout, QVBoxLayout, QLabel,
+                           QLineEdit, QPushButton, QGraphicsScene,
+                           QGraphicsPixmapItem, QGraphicsBlurEffect)
 import auth
 from ui.theme import gradient
 
@@ -24,6 +26,71 @@ class Photo(QFrame):
             p.drawPixmap((self.width()-pix.width())//2, (self.height()-pix.height())//2, pix)
         if self.shade:
             p.fillRect(self.rect(), QColor(20, 23, 30, self.shade))
+
+
+
+class FrostedGlass(QFrame):
+    """Frosted crop of the existing login background, not a separate image."""
+
+    def __init__(self, background, parent=None):
+        super().__init__(parent)
+        self.background = background
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self._blurred = QPixmap()
+        self._cache_key = None
+
+    def _background_crop(self):
+        bg = self.background
+        if bg.photo.isNull() or self.width() <= 0 or self.height() <= 0:
+            return QPixmap()
+        scaled = bg.photo.scaled(
+            bg.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
+        )
+        position = self.mapTo(bg, QPoint(0, 0))
+        x = position.x() + (scaled.width() - bg.width()) // 2
+        y = position.y() + (scaled.height() - bg.height()) // 2
+        return scaled.copy(x, y, self.width(), self.height())
+
+    def paintEvent(self, event):
+        bg = self.background
+        position = self.mapTo(bg, QPoint(0, 0))
+        key = (self.width(), self.height(), bg.width(), bg.height(),
+               position.x(), position.y())
+        if key != self._cache_key:
+            self._cache_key = key
+            source = self._background_crop()
+            self._blurred = QPixmap()
+            if not source.isNull():
+                scene = QGraphicsScene()
+                scene.setSceneRect(QRectF(source.rect()))
+                item = QGraphicsPixmapItem(source)
+                effect = QGraphicsBlurEffect()
+                effect.setBlurRadius(18)
+                item.setGraphicsEffect(effect)
+                scene.addItem(item)
+                self._blurred = QPixmap(source.size())
+                self._blurred.fill(Qt.transparent)
+                output = QPainter(self._blurred)
+                scene.render(output, QRectF(self._blurred.rect()),
+                             QRectF(source.rect()))
+                output.end()
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        area = QRectF(self.rect()).adjusted(1, 1, -1, -1)
+        clip = QPainterPath()
+        clip.addRoundedRect(area, 12, 12)
+        painter.setClipPath(clip)
+        if not self._blurred.isNull():
+            painter.drawPixmap(self.rect(), self._blurred)
+        # Deep blue translucent tint keeps the original logo readable while
+        # allowing the blurred full-screen background to remain visible.
+        painter.fillRect(self.rect(), QColor(26, 39, 67, 100))
+        painter.setClipping(False)
+        painter.setPen(QPen(QColor(243, 249, 255, 115), 1.2))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(area, 12, 12)
+        painter.end()
 
 
 class LoginDialog(QDialog):
@@ -79,8 +146,7 @@ class LoginDialog(QDialog):
         card.setStyleSheet('QFrame { border: none; }')
         self.login_card = card
         row = QHBoxLayout(card); row.setContentsMargins(0,0,0,0); row.setSpacing(0)
-        photo = Photo('building.jpg', 95)
-        photo.setProperty('rounded', True)
+        photo = FrostedGlass(bg)
         self.login_photo = photo
         pl = QVBoxLayout(photo); pl.addStretch()
         logo = QLabel(); logo.setAlignment(Qt.AlignCenter)
