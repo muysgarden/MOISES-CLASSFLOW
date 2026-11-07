@@ -421,7 +421,7 @@ class MainWindow(QMainWindow):
                 title = f"Schedule · {group['code']} — {group['section']} ({group['days_label']})"
                 matches.append((title, ("schedule", tuple(group["ids"]))))
 
-        for key in ("subjects", "faculty", "classrooms", "sections", "programs", "terms", "periods"):
+        for key in ("subjects", "faculty", "classrooms", "sections", "terms"):
             entity = ENTITIES[key]
             for record in db.rows(entity["sql"]):
                 values = tuple(record)[1:]
