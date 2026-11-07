@@ -2,8 +2,8 @@ import html
 import csv
 import re
 from pathlib import Path
-from PyQt5.QtCore import QStandardPaths, QRectF
-from PyQt5.QtGui import QPainter, QTextDocument, QTextLength, QTextTable
+from PyQt5.QtCore import QStandardPaths, QRectF, Qt
+from PyQt5.QtGui import QPainter, QTextDocument, QTextLength, QTextTable, QColor, QFont, QFontMetrics, QPen
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QFileDialog
 from openpyxl import Workbook
@@ -851,9 +851,157 @@ class ReportsPage(Page):
             else:
                 self.print_schedule_pdf(printer,document)
 
+    def _paint_timetable_pages(self, printer):
+        """Render weekly timetables at fixed A4 coordinates.
+
+        Using QPainter rather than QTextDocument rowspans prevents long labels
+        from stretching neighboring rows or shifting empty weekdays.
+        """
+        painter=QPainter(printer)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.scale(printer.resolution()/72.0, printer.resolution()/72.0)
+        page=printer.pageRect(QPrinter.Point)
+        width=float(page.width())
+        height=float(page.height())
+        pad=10.0
+        left=pad
+        right=width-pad
+        table_width=right-left
+        time_width=table_width*.19
+        day_width=(table_width-time_width)/6.0
+        grid_top=137.0
+        header_height=24.0
+        row_height=min(26.0, max(21.0,(height-grid_top-106.0)/20))
+        days=[('Mon','MONDAY'),('Tue','TUESDAY'),('Wed','WEDNESDAY'),
+              ('Thu','THURSDAY'),('Fri','FRIDAY'),('Sat','SATURDAY')]
+        blue=QColor('#E8EDF5')
+        border=QColor('#778398')
+        ink=QColor('#202A3C')
+        blocks={'major':'#ECF2FB','ged':'#EAF7F6','lab':'#FFF2E1'}
+        def font(px=8,bold=False):
+            f=QFont('Arial')
+            f.setPixelSize(max(6,int(px)))
+            f.setBold(bold)
+            return f
+        def write(rect,value,px=8,bold=False,align=None,color=None):
+            painter.setFont(font(px,bold))
+            painter.setPen(color or ink)
+            alignment=align if align is not None else (Qt.AlignCenter | Qt.AlignVCenter)
+            painter.drawText(rect,alignment,str(value))
+        def cell(rect,fill=None):
+            painter.setPen(QPen(border,0.72))
+            painter.setBrush(QColor(fill) if fill else Qt.white)
+            painter.drawRect(rect)
+        groups=self._schedule_groups()
+        if not groups:
+            groups=[('No matching schedules',[])]
+        for index,(name,rows) in enumerate(groups):
+            if index:
+                printer.newPage()
+            painter.save()
+            # Centered, formal university heading. All records are from ClassFlow.
+            write(QRectF(left,7,table_width,12),'Republic of the Philippines',8)
+            write(QRectF(left,20,table_width,15),'Laguna State Polytechnic University',11,True)
+            write(QRectF(left,36,table_width,12),'Province of Laguna',8)
+            write(QRectF(left,54,table_width,13),'COLLEGE OF COMPUTER STUDIES',10,True)
+            write(QRectF(left,71,table_width,16),'CLASS SCHEDULE',13,True)
+            write(QRectF(left,88,table_width,13),self.win.term_name(),9)
+            write(QRectF(left,110,table_width,13),self.report.currentText(),9,True,
+                  Qt.AlignLeft|Qt.AlignVCenter)
+            mode=self.report.currentText()
+            if rows and mode in ('Class Schedules','Section Schedules'):
+                section=db.row(
+                    'SELECT p.name FROM sections s JOIN programs p ON p.id=s.program_id WHERE s.id=?',
+                    (rows[0]['section_id'],))
+                meta=f'Program: {section["name"] if section else "Not specified"}   |   Section: {name}'
+            elif mode=='Faculty Schedules':
+                meta=f'Faculty: {name}'
+            else:
+                meta=f'Classroom: {name}'
+            write(QRectF(left,124,table_width,12),meta,8,False,Qt.AlignLeft|Qt.AlignVCenter)
+            # Exactly seven fixed columns, regardless of populated weekdays.
+            x_positions=[left,left+time_width]+[
+                left+time_width+day_width*j for j in range(1,7)]
+            widths=[time_width]+[day_width]*6
+            for i,heading in enumerate(['PERIOD']+[item[1] for item in days]):
+                rect=QRectF(x_positions[i],grid_top,widths[i],header_height)
+                cell(rect,blue)
+                write(rect,heading,8,True)
+            for slot in range(20):
+                start=logic.CAL_START+slot*30
+                y=grid_top+header_height+slot*row_height
+                rect=QRectF(left,y,time_width,row_height)
+                cell(rect,'#F4F6FA')
+                write(rect,f'{logic.fmt(start)}–{logic.fmt(start+30)}',7)
+                for day_i in range(6):
+                    cell(QRectF(x_positions[day_i+1],y,day_width,row_height))
+            for day_i,(day,_) in enumerate(days):
+                meetings=sorted((r for r in rows if r['day']==day),
+                                key=lambda r:(r['start_min'],r['end_min']))
+                components=[]
+                for meeting in meetings:
+                    start=max(logic.CAL_START,meeting['start_min'])
+                    end=min(logic.CAL_END,meeting['end_min'])
+                    if end<=start:
+                        continue
+                    if components and start<components[-1]['end']:
+                        components[-1]['end']=max(components[-1]['end'],end)
+                        components[-1]['rows'].append(meeting)
+                    else:
+                        components.append({'start':start,'end':end,'rows':[meeting]})
+                for component in components:
+                    first=max(0,int((component['start']-logic.CAL_START)//30))
+                    last=min(20,int((component['end']-logic.CAL_START+29)//30))
+                    if last<=first:
+                        continue
+                    y=grid_top+header_height+first*row_height
+                    rect=QRectF(x_positions[day_i+1],y,day_width,
+                                (last-first)*row_height)
+                    meeting=component['rows'][0]
+                    cell(rect,blocks.get(meeting['category'],'#ECF2FB'))
+                    # Clip every text operation to its assignment. No label can
+                    # spill across the fixed table grid or into another day.
+                    painter.save()
+                    painter.setClipRect(rect.adjusted(2,2,-2,-2))
+                    if len(component['rows'])>1:
+                        raw=['CONFLICT']+[r['code']+' / '+r['section'] for r in component['rows']]
+                    else:
+                        raw=[meeting['code'],
+                             meeting['section'],
+                             meeting['faculty'],
+                             meeting['room']]
+                    available=max(1,rect.height()-6)
+                    line_height=11.0
+                    maximum=max(1,int(available//line_height))
+                    if maximum<len(raw):
+                        # Short time slots prioritize code and location.
+                        raw=[meeting['code'],meeting['room']] if len(component['rows'])==1 else raw[:maximum]
+                    raw=raw[:max(1,int(available//line_height))]
+                    line_height=min(11.0,available/len(raw))
+                    top=rect.y()+(rect.height()-line_height*len(raw))/2
+                    for line_num,value in enumerate(raw):
+                        line=QRectF(rect.x()+2,top+line_num*line_height,
+                                    rect.width()-4,line_height)
+                        painter.setFont(font(8,line_num==0))
+                        display=QFontMetrics(painter.font()).elidedText(
+                            str(value),Qt.ElideRight,max(1,int(line.width())))
+                        write(line,display,8,line_num==0)
+                    painter.restore()
+            footer_y=grid_top+header_height+20*row_height+23
+            write(QRectF(left,footer_y,table_width,15),'Prepared by:',9,False,
+                  Qt.AlignLeft|Qt.AlignVCenter)
+            painter.setPen(QPen(ink,0.8))
+            painter.drawLine(left,footer_y+39,left+165,footer_y+39)
+            if not rows:
+                write(QRectF(left,grid_top+header_height+120,table_width,24),
+                      'No saved classes for the selected term',10)
+            painter.restore()
+        painter.end()
+
     def print_schedule_pdf(self, printer, document):
-        # Explicit A4 pagination avoids QTextDocument's extra default margins
-        # and automatic page-number footer.
+        if self.report.currentText() in TIMETABLE_REPORTS:
+            self._paint_timetable_pages(printer)
+            return
         document.setPageSize(printer.pageRect(QPrinter.Point).size())
         document.print_(printer)
 
