@@ -587,6 +587,10 @@ class SystemTests(unittest.TestCase):
             self.assertEqual(db.sample_count(), original)
             self.assertEqual(db.clear_sample_data(), original)
             self.assertEqual(db.sample_count(), 0)
+            self.assertEqual(
+                [r["code"] for r in db.rows("SELECT code FROM programs ORDER BY code")],
+                ["BSCS", "BSIT"]
+            )
             db.conn.close()
         db.init(':memory:')
 
