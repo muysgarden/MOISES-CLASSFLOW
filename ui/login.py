@@ -29,9 +29,11 @@ class Photo(QFrame):
 class LoginDialog(QDialog):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('ClassFlow — Login')
+        self.setWindowTitle('ClassFlow')
+        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
+        self.setWindowState(self.windowState() | Qt.WindowFullScreen)
         self.resize(1100, 660)
-        self.setMinimumSize(760, 480)
+        self.setMinimumSize(640, 420)
         self.first = not auth.has_users()
         self.failures = 0
         self.setStyleSheet('''
@@ -59,16 +61,16 @@ class LoginDialog(QDialog):
             QLineEdit:focus {{ border: 1px solid #7F6BE5; }}
         ''')
         root = QVBoxLayout(self)
-        root.setContentsMargins(20, 10, 20, 20)
-        cap = QLabel('Login'); cap.setStyleSheet('color:#888; font-size:14px')
-        root.addWidget(cap)
+        root.setContentsMargins(0, 0, 0, 0)
         bg = Photo('background.jpg')
         root.addWidget(bg, 1)
         outer = QVBoxLayout(bg); outer.addStretch()
         center = QHBoxLayout(); center.addStretch()
-        card = QFrame(); card.setFixedSize(610, 360)
+        card = QFrame(); card.setMinimumSize(0, 340)
+        card.setMaximumWidth(760)
+        card.setStyleSheet('QFrame { border: none; }')
         row = QHBoxLayout(card); row.setContentsMargins(0,0,0,0); row.setSpacing(0)
-        photo = Photo('building.jpg', 95); photo.setFixedWidth(248); photo.setProperty('rounded',True)
+        photo = Photo('building.jpg', 95); photo.setMinimumWidth(180); photo.setMaximumWidth(285); photo.setProperty('rounded',True)
         pl = QVBoxLayout(photo); pl.addStretch()
         logo = QLabel(); logo.setAlignment(Qt.AlignCenter)
         pix = QPixmap(str(ASSETS/'logo.png')) if (ASSETS/'logo.png').exists() else QPixmap()
