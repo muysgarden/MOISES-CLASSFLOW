@@ -75,7 +75,7 @@ class LoginDialog(QDialog):
         # still shrink the width without clipping the form.
         card = QFrame()
         card.setMinimumHeight(410)
-        card.setMaximumWidth(1000)
+        card.setMaximumWidth(820)
         card.setStyleSheet('QFrame { border: none; }')
         self.login_card = card
         row = QHBoxLayout(card); row.setContentsMargins(0,0,0,0); row.setSpacing(0)
@@ -119,7 +119,7 @@ class LoginDialog(QDialog):
         if not hasattr(self, 'login_card'):
             return
         available = max(0, self.width() - 48)
-        width = min(1000, available)
+        width = min(820, available)
         if width <= 0:
             return
         if self.login_card.width() != width:
