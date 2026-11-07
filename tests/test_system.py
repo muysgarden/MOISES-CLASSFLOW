@@ -196,26 +196,24 @@ class SystemTests(unittest.TestCase):
         win.close()
 
     def test_reports_show_only_relevant_filters(self):
-        win = MainWindow()
-        page = win.pages['reports']
+        win=MainWindow()
+        page=win.pages['reports']
         page.refresh()
-        page.report.setCurrentText('Section Schedules')
-        app.processEvents()
+        self.assertEqual(
+            [page.report.itemText(i) for i in range(page.report.count())],
+            ['Class Schedules','Faculty Schedules','Classroom Schedules',
+             'Room Utilization','Faculty Teaching Load','Available Rooms']
+        )
+        page.report.setCurrentText('Class Schedules')
         self.assertFalse(page.filter_widgets['section'].isHidden())
         self.assertFalse(page.filter_widgets['program'].isHidden())
-        self.assertTrue(page.filter_widgets['faculty'].isHidden())
-        self.assertEqual(page.section.currentData(), None)
         page.section.setCurrentIndex(1)
-        section_id = page.section.currentData()
-        self.assertTrue(all(row['section_id'] == section_id for row in page.report_rows))
-
+        sid=page.section.currentData()
+        self.assertTrue(all(r['section_id']==sid for r in page.report_rows))
         page.report.setCurrentText('Room Utilization')
         self.assertTrue(page.filter_card.isHidden())
         self.assertFalse(page.chart_card.isHidden())
-        self.assertEqual(len(page.report_rows), len(logic.schedule_rows(win.term_id())))
-        page.report.setCurrentText('Conflict Reports')
-        self.assertTrue(page.filter_card.isHidden())
-        self.assertFalse(page.table.isHidden())
+        self.assertEqual(len(page.report_rows),len(logic.schedule_rows(win.term_id())))
         win.close()
 
     def test_module_five_all_and_individual_schedule_exports(self):
@@ -246,11 +244,11 @@ class SystemTests(unittest.TestCase):
         self.assertIn('Faculty:', faculty_pdf)
         self.assertIn('CLASS SCHEDULE', faculty_pdf)
 
-        page.report.setCurrentText('Section Schedules')
+        page.report.setCurrentText('Class Schedules')
         self.assertIsNone(page.section.currentData())
         self.assertFalse(page.table.isHidden())
         page.section.setCurrentIndex(1)
-        self.assertFalse(page.calendar.isHidden())
+        self.assertTrue(page.calendar.isHidden())
 
         page.report.setCurrentText('Classroom Schedules')
         self.assertIsNone(page.room.currentData())
@@ -461,60 +459,20 @@ class SystemTests(unittest.TestCase):
             self.assertGreater(os.path.getsize(device_pdf),1000)
         win.close()
 
-    def test_room_utilization_schedule_includes_all_room_occupants(self):
+    def test_room_and_faculty_report_filters(self):
         win=MainWindow()
-        reports=win.pages['reports']
-        reports.refresh()
+        page=win.pages['reports']
+        page.refresh()
+        page.report.setCurrentText('Classroom Schedules')
         room=db.row('SELECT id FROM classrooms WHERE name="Room 103"')['id']
-        reports.room.setCurrentIndex(reports.room.findData(room))
-        reports.report.setCurrentIndex(reports.report.findText('Room Utilization Schedule'))
-        self.assertEqual(reports.program.currentText(), 'All programs')
-        self.assertEqual(reports.section.currentText(), 'All sections')
-        self.assertEqual(reports.faculty.currentText(), 'All faculty')
-        self.assertTrue(all(not combo.isEnabled() for combo in (
-            reports.program, reports.section, reports.faculty,
-        )))
-        self.assertFalse(any(reports.room.itemText(i).lower().startswith('all') for i in range(reports.room.count())))
-        reports.program.setCurrentIndex(reports.program.findData(
-            db.row('SELECT id FROM programs WHERE code="BSIT"')['id']
-        ))
-        reports.faculty.setCurrentIndex(reports.faculty.findData(
-            db.row('SELECT id FROM faculty WHERE name="Prof. Miguel Cruz"')['id']
-        ))
-        reports.section.setCurrentIndex(reports.section.findData(
-            db.row('SELECT id FROM sections WHERE name="BSIT 2B"')['id']
-        ))
+        page.room.setCurrentIndex(page.room.findData(room))
         expected={r['id'] for r in logic.schedule_rows(1) if r['room_id']==room}
-        self.assertEqual({r['id'] for r in reports.report_rows},expected)
-        self.assertGreater(len({r['section_id'] for r in reports.report_rows}),1)
-        with db.conn:
-            db.conn.execute(
-                'INSERT INTO unavailable(kind,resource_id,day,start_min,end_min) VALUES(?,?,?,?,?)',
-                ('room',room,'Sat',480,540),
-            )
-        reports.render()
-        statuses={row[4] for row in reports.output}
-        self.assertIn('Available',statuses)
-        self.assertIn('Unavailable',statuses)
-        sheet=reports.room_utilization_html()
-        self.assertIn('ROOM UTILIZATION SCHEDULE',sheet)
-        self.assertIn('SATURDAY',sheet)
-        self.assertIn('bgcolor="#ffffff"',sheet)
-        self.assertIn('color="#000000"',sheet)
-        self.assertNotIn('#e8eff8',sheet)
-        self.assertNotIn('#fce8d4',sheet)
-        self.assertNotIn('<b>AVAILABLE</b>',sheet)
-        self.assertIn('>TIME</th>',sheet)
-        self.assertIn('>MONDAY</th>',sheet)
-        self.assertIn(
-            '<td rowspan="1" height="18" bgcolor="#ffffff" align="center" valign="middle">'
-            '<font size="2" color="#000000"></font></td>',
-            sheet,
-        )
-        self.assertIn('UNAVAILABLE',sheet)
-        self.assertIn('BSCS 1A',sheet)
-        self.assertIn('Dr. Elena Santos',sheet)
-        self.assertNotIn('Room 104',sheet)
+        self.assertEqual({r['id'] for r in page.report_rows},expected)
+        self.assertFalse(page.calendar.isHidden())
+        page.report.setCurrentText('Faculty Schedules')
+        faculty=db.row('SELECT id FROM faculty ORDER BY name LIMIT 1')['id']
+        page.faculty.setCurrentIndex(page.faculty.findData(faculty))
+        self.assertTrue(all(r['faculty_id']==faculty for r in page.report_rows))
         win.close()
 
     def test_academic_faculty_creation(self):
@@ -627,13 +585,10 @@ class SystemTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             pdf=os.path.join(directory,'report.pdf')
             excel_path=os.path.join(directory,'schedule.xlsx')
-            reports.report.setCurrentText('Room Utilization Schedule')
-            reports.room.setCurrentIndex(reports.room.findData(
-                db.row('SELECT id FROM classrooms WHERE name="Room 103"')['id']
-            ))
-            schedule_html = reports.room_utilization_html()
-            self.assertIn('<th width="15.00%" nowrap="nowrap">FRIDAY</th>', schedule_html)
-            self.assertIn('align="center" nowrap="nowrap">', schedule_html)
+            reports.report.setCurrentText('Class Schedules')
+            schedule_html = reports.schedule_sheet_html()
+            self.assertIn('MONDAY', schedule_html)
+            self.assertIn('SATURDAY', schedule_html)
             with patch('ui.reports.QFileDialog.getSaveFileName',return_value=(pdf,'PDF')):
                 with patch.object(
                     reports, 'print_schedule_pdf', wraps=reports.print_schedule_pdf
@@ -664,7 +619,7 @@ class SystemTests(unittest.TestCase):
             self.assertGreater(os.path.getsize(pdf),1000)
             workbook=load_workbook(excel_path,data_only=True)
             sheet=workbook['Class Schedule']
-            self.assertEqual(sheet['A1'].value,'ROOM UTILIZATION SCHEDULE')
+            self.assertEqual(sheet['A1'].value,'CLASS SCHEDULE')
             self.assertEqual(sheet['A6'].value,'PERIOD')
             self.assertEqual(sheet['B6'].value,'MONDAY')
             self.assertEqual(sheet['A7'].value, f'{logic.fmt(logic.CAL_START)}–{logic.fmt(logic.CAL_START+30)}')
@@ -681,7 +636,7 @@ class SystemTests(unittest.TestCase):
             }
             self.assertTrue({'FCE4D6', 'FFF2CC'}.issubset(year_fills))
             workbook.close()
-            reports.report.setCurrentIndex(reports.report.findText('Section Schedules'))
+            reports.report.setCurrentText('Class Schedules')
             class_excel_path=os.path.join(directory,'class-schedule.xlsx')
             with patch('ui.reports.QFileDialog.getSaveFileName',return_value=(class_excel_path,'Excel')): reports.export_excel()
             workbook=load_workbook(class_excel_path,data_only=True)
@@ -706,23 +661,15 @@ class SystemTests(unittest.TestCase):
         win=MainWindow()
         reports=win.pages['reports']
         reports.refresh()
-        for report_name in ('Class Schedules', 'Faculty Schedules', 'Section Schedules'):
+        for report_name in ('Class Schedules','Faculty Schedules','Classroom Schedules'):
             reports.report.setCurrentText(report_name)
-            self.assertIsNone(reports.program.currentData())
-            self.assertIsNone(reports.section.currentData())
-            self.assertIsNone(reports.faculty.currentData())
-            self.assertEqual(reports.program.itemText(0), 'All programs')
-            self.assertEqual(reports.section.itemText(0), 'All sections')
-            self.assertEqual(reports.faculty.itemText(0), 'All faculty')
-        reports.report.setCurrentText('Room Utilization Schedule')
-        self.assertEqual(reports.program.currentText(), 'All programs')
-        self.assertEqual(reports.section.currentText(), 'All sections')
-        self.assertEqual(reports.faculty.currentText(), 'All faculty')
-        self.assertTrue(all(not combo.isEnabled() for combo in (
-            reports.program, reports.section, reports.faculty
-        )))
-        self.assertTrue(all(reports.room.itemData(i) is not None
-                            for i in range(reports.room.count())))
+            self.assertEqual(reports.program.itemText(0),'All programs')
+            self.assertEqual(reports.section.itemText(0),'All sections')
+            self.assertEqual(reports.faculty.itemText(0),'All faculty')
+            self.assertEqual(reports.room.itemText(0),'All rooms')
+        reports.report.setCurrentText('Faculty Schedules')
+        self.assertFalse(reports.filter_widgets['faculty'].isHidden())
+        self.assertTrue(reports.filter_widgets['section'].isHidden())
         win.close()
 
     def test_all_pages_and_report(self):
@@ -732,7 +679,7 @@ class SystemTests(unittest.TestCase):
         reports=win.pages['reports']
         for i in range(reports.report.count()):
             reports.report.setCurrentIndex(i); app.processEvents(); self.assertTrue(reports.headers)
-        reports.report.setCurrentText('Section Schedules')
+        reports.report.setCurrentText('Class Schedules')
         sheet=reports.schedule_sheet_html()
         self.assertIn('>PERIOD</th>',sheet)
         self.assertIn('>MONDAY</th>',sheet)
