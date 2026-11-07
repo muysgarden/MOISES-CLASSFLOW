@@ -99,7 +99,7 @@ def validate_workspace(source):
         if handle.read(16)!=b"SQLite format 3\x00":
             raise ValueError("This is not a SQLite database file.")
     try:
-        connection=sqlite3.connect(f"file:{path.as_posix()}?mode=ro",uri=True)
+        connection=sqlite3.connect(path.as_uri()+"?mode=ro",uri=True)
         try:
             ok=connection.execute("PRAGMA integrity_check").fetchone()[0]
             if ok!="ok":
