@@ -304,19 +304,17 @@ class MainWindow(QMainWindow):
     def _build_topbar(self):
         bar = QFrame()
         bar.setObjectName("topbar")
-        bar.setFixedHeight(78)
+        # The active page already has its own title: leave the left side
+        # intentionally open and keep only useful global controls here.
+        bar.setFixedHeight(66)
         h = QHBoxLayout(bar)
-        h.setContentsMargins(29, 0, 30, 0)
-        h.setSpacing(13)
-
-        left = QVBoxLayout()
-        left.setSpacing(3)
+        h.setContentsMargins(24, 0, 24, 0)
+        h.setSpacing(12)
         self.page_title = label("Dashboard", "topTitle")
         self.page_context = label(PAGE_DESCRIPTIONS["dashboard"], "topContext")
-        left.addWidget(self.page_title)
-        left.addWidget(self.page_context)
-        h.addLayout(left)
-        h.addStretch()
+        self.page_title.hide()
+        self.page_context.hide()
+        h.addStretch(1)
         self.search = QLineEdit()
         self.search.setObjectName("globalSearch")
         self.search.setPlaceholderText("⌕  Search subjects, faculty, rooms, schedules…")
