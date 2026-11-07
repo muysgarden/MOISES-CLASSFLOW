@@ -1,12 +1,13 @@
 """Full workspace account settings, styled like the ClassFlow dashboard."""
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QButtonGroup,
     QMessageBox, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 import auth
 import db
 from ui.theme import gradient
+from ui.appearance import current_mode
 
 
 def caption(value, name=None):
@@ -26,6 +27,7 @@ def secret(placeholder):
 class AccountSettingsPage(QWidget):
     """A normal page with an account/security sub-navigation."""
     username_changed = pyqtSignal(str)
+    appearance_changed = pyqtSignal(str)
 
     def __init__(self, username, parent=None):
         super().__init__(parent)
@@ -89,6 +91,7 @@ class AccountSettingsPage(QWidget):
         self.tabs = {}
         for key, title in (("account", "My account"),
                            ("security", "Security"),
+                           ("appearance", "Appearance"),
                            ("data", "Data management")):
             button = QPushButton(title)
             button.setObjectName("settingsTab")
@@ -101,6 +104,7 @@ class AccountSettingsPage(QWidget):
         self.sections = QStackedWidget()
         self.sections.addWidget(self._account_section())
         self.sections.addWidget(self._security_section())
+        self.sections.addWidget(self._appearance_section())
         self.sections.addWidget(self._data_section())
         shell.addWidget(self.sections, 1)
         outer.addWidget(surface, 1)
@@ -186,6 +190,47 @@ class AccountSettingsPage(QWidget):
         layout.addStretch()
         return scroll
 
+    def _appearance_section(self):
+        scroll, layout = self._section(
+            "Appearance", "Choose how ClassFlow looks on this device."
+        )
+        description = caption(
+            "Changes apply immediately and are remembered when you reopen the app.",
+            "settingsHint"
+        )
+        description.setWordWrap(True)
+        layout.addWidget(description)
+        self.appearance_group = QButtonGroup(self)
+        self.appearance_group.setExclusive(True)
+        self.appearance_buttons = {}
+        for name, title, detail in (
+            ("light", "☀  Light mode", "Soft blue-white workspace"),
+            ("dark", "☾  Dark mode", "Low-glare navy workspace"),
+        ):
+            choice = QPushButton(f"{title}   ·   {detail}")
+            choice.setObjectName("settingsTab")
+            choice.setCheckable(True)
+            choice.setMinimumHeight(58)
+            choice.clicked.connect(
+                lambda _=False, selected=name: self._choose_appearance(selected)
+            )
+            self.appearance_group.addButton(choice)
+            self.appearance_buttons[name] = choice
+            layout.addWidget(choice)
+        layout.addStretch()
+        self.refresh_appearance()
+        return scroll
+
+    def refresh_appearance(self):
+        selected = current_mode()
+        if hasattr(self, "appearance_buttons"):
+            for name, button in self.appearance_buttons.items():
+                button.setChecked(name == selected)
+
+    def _choose_appearance(self, mode):
+        self.appearance_changed.emit(mode)
+        self.refresh_appearance()
+
     def _data_section(self):
         scroll, layout = self._section(
             "Data management", "Remove demonstration records when testing is complete."
@@ -246,9 +291,11 @@ class AccountSettingsPage(QWidget):
     def set_tab(self, tab):
         for key, button in self.tabs.items():
             button.setChecked(key == tab)
-        self.sections.setCurrentIndex({"account": 0, "security": 1, "data": 2}[tab])
+        self.sections.setCurrentIndex({"account": 0, "security": 1, "appearance": 2, "data": 3}[tab])
         if tab == "data":
             self.refresh_samples()
+        elif tab == "appearance":
+            self.refresh_appearance()
 
     def prepare(self, username):
         self.username = username
