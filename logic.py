@@ -21,9 +21,9 @@ PATTERNS = [
     ("Thu", "Thursday"), ("Fri", "Friday"), ("Sat", "Saturday"),
 ]
 
-CAL_START, CAL_END = 7 * 60, 20 * 60
+CAL_START, CAL_END = 7 * 60, 17 * 60
 TIME_CHOICES = [(m, "") for m in range(CAL_START, CAL_END + 1, 30)]
-BLOCKS = [(8 * 60, 12 * 60, "8 AM–12 PM"), (13 * 60, 17 * 60, "1 PM–5 PM"), (17 * 60, 20 * 60, "5 PM–8 PM")]
+BLOCKS = [(7 * 60, 10 * 60, "7 AM–10 AM"), (10 * 60, 13 * 60, "10 AM–1 PM"), (13 * 60, 17 * 60, "1 PM–5 PM")]
 
 
 def fmt(m):
@@ -39,10 +39,8 @@ def overlap(a1, a2, b1, b2):
 
 
 def school_window():
-    r = db.row("SELECT MIN(start_min) AS lo, MAX(end_min) AS hi FROM periods")
-    if r is None or r["lo"] is None:
-        return CAL_START, CAL_END
-    return r["lo"], r["hi"]
+    # School-wide operating hours take precedence over legacy database periods.
+    return CAL_START, CAL_END
 
 
 def category(code, subject_type):
@@ -122,7 +120,7 @@ def check_candidate(term_id, subject_id, section_id, faculty_id, room_id, days, 
     issues = []
     lo, hi = school_window()
     if start < lo or end > hi:
-        issues.append(_issue("Invalid Time", REVIEW,
+        issues.append(_issue("Invalid Time", CRITICAL,
                              f"Class falls outside the school period ({fmt(lo)}–{fmt(hi)})."))
 
     if not days or any(day not in DAY_CODES for day in days):
@@ -159,11 +157,6 @@ def check_candidate(term_id, subject_id, section_id, faculty_id, room_id, days, 
         if r["section_id"] == section_id:
             issues.append(_issue("Section Conflict", CRITICAL,
                                  f"{section['name']} already has {r['code']} on {when}."))
-
-    if room["capacity"] < section["enrollment"]:
-        issues.append(_issue("Capacity Problem", WARNING,
-                             f"{room['name']} capacity ({room['capacity']}) is below section enrollment "
-                             f"({section['enrollment']})."))
 
     q = """SELECT DISTINCT s.subject_id, s.section_id, sub.units FROM schedules s
            JOIN subjects sub ON sub.id = s.subject_id WHERE s.term_id=? AND s.faculty_id=?"""
@@ -249,13 +242,10 @@ def validate_term(term_id):
     load, last = defaultdict(int), {}
     load_pairs = set()
     for g in groups:
-        if g["capacity"] < g["enrollment"]:
-            push("Capacity Problem", WARNING, g,
-                 f"{g['room']} capacity ({g['capacity']}) is below section enrollment ({g['enrollment']}).")
         if g["end_min"] <= g["start_min"]:
             push("Invalid Time", CRITICAL, g, "End time is not after the start time.")
         elif g["start_min"] < lo or g["end_min"] > hi:
-            push("Invalid Time", REVIEW, g, "Class ends outside the designated school period."
+            push("Invalid Time", CRITICAL, g, "Class ends outside the designated school period."
                  if g["end_min"] > hi else "Class starts outside the designated school period.")
         pair = (g["faculty_id"], g["subject_id"], g["section_id"])
         if pair not in load_pairs:
