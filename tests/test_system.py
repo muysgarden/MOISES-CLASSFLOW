@@ -672,6 +672,48 @@ class SystemTests(unittest.TestCase):
         self.assertTrue(reports.filter_widgets['section'].isHidden())
         win.close()
 
+    def test_dataset_backup_new_workspace_and_restore(self):
+        from ui.workspace import save_copy, create_blank_workspace, validate_workspace
+        auth.create('admin','persistent-password')
+        original_count=db.row('SELECT COUNT(*) FROM programs')[0]
+        with tempfile.TemporaryDirectory() as directory:
+            saved=os.path.join(directory,'saved.db')
+            fresh=os.path.join(directory,'blank.db')
+            saved_path=save_copy(saved)
+            self.assertTrue(os.path.isfile(saved_path))
+            self.assertEqual(validate_workspace(saved),saved_path)
+            with patch('ui.workspace.select_workspace') as select:
+                blank_path=create_blank_workspace(fresh,'admin')
+                select.assert_called_once_with(blank_path)
+            self.assertTrue(os.path.isfile(blank_path))
+            self.assertEqual(db.row('SELECT COUNT(*) FROM programs')[0],original_count)
+            import sqlite3
+            connection=sqlite3.connect(fresh)
+            self.assertEqual(connection.execute('SELECT COUNT(*) FROM programs').fetchone()[0],0)
+            self.assertEqual(connection.execute('SELECT COUNT(*) FROM terms').fetchone()[0],0)
+            self.assertEqual(connection.execute('SELECT COUNT(*) FROM users').fetchone()[0],1)
+            connection.close()
+            with self.assertRaises(FileExistsError):
+                save_copy(saved)
+            with self.assertRaises(FileExistsError):
+                create_blank_workspace(fresh,'admin')
+
+    def test_availability_check_dropdowns_allow_typing(self):
+        win=MainWindow()
+        page=win.pages['availability']
+        for combo in (page.day,page.start,page.end,page.room_type):
+            self.assertTrue(combo.isEditable())
+            self.assertEqual(combo.insertPolicy(),combo.NoInsert)
+        page.day.setEditText('Monday')
+        page.start.setEditText('8:15 AM')
+        page.end.setEditText('9:45 AM')
+        page.refresh()
+        self.assertIn('8:15 AM',page.summary.text())
+        page.end.setEditText('6:00 PM')
+        page.refresh()
+        self.assertIn('7:00 AM and 5:00 PM',page.summary.text())
+        win.close()
+
     def test_all_pages_and_report(self):
         win=MainWindow(); win.show(); app.processEvents()
         for key in win.pages:
