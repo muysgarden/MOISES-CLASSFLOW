@@ -5,7 +5,6 @@ from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QAbstractItemView, QHBoxLayout, QLabel, QSizePolicy
 
 import logic
-from ui.appearance import current_mode
 from ui.widgets import (
     Page, Card, button, label, make_table, text_item, fit_table,
 )
@@ -168,12 +167,9 @@ class ValidationPage(Page):
         for severity, card in self.priority_cards.items():
             active = self.active_priority == severity
             _foreground, _background, outline = PRIORITY_COLORS[severity]
-            dark=current_mode()=="dark"
-            surface="#202D42" if dark else "#FFFFFF"
-            neutral="#485B76" if dark else "#DFE5F0"
             card.setStyleSheet(
-                f"QFrame#priorityCard {{border: 2px solid {outline if active else neutral}; "
-                f"background: {surface}; border-radius: 12px;}}"
+                f"QFrame#priorityCard {{border: 2px solid {outline if active else '#DFE5F0'}; "
+                "background: #FFFFFF; border-radius: 12px;}"
             )
         self.results.subtitle.setText(
             f"Showing {len(issues)} of {len(self.result['issues'])} issues · Click a row for details"
