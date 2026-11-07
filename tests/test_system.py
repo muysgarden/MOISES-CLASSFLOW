@@ -195,6 +195,17 @@ class SystemTests(unittest.TestCase):
         self.assertEqual(set(win.pages['schedules'].replace_ids), set(issue['edit_ids']))
         win.close()
 
+    def test_check_schedules_button_gives_visible_audit_feedback(self):
+        win=MainWindow()
+        page=win.pages['validation']
+        with patch.object(win,'notify') as notify:
+            page.check_schedules()
+            notify.assert_called_once()
+        self.assertIn('saved assignments reviewed',page.check_feedback.text())
+        self.assertIn('issues',page.check_feedback.text())
+        self.assertEqual(page.result['total'],logic.validate_term(win.term_id())['total'])
+        win.close()
+
     def test_reports_show_only_relevant_filters(self):
         win=MainWindow()
         page=win.pages['reports']
