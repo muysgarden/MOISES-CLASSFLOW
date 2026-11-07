@@ -38,18 +38,17 @@ ENTITIES = {
     },
     "sections": {
         "tab": "Sections", "singular": "Section", "plural": "sections", "table": "sections",
-        "sql": f"""SELECT s.id, s.name, s.enrollment FROM sections s
+        "sql": f"""SELECT s.id, s.name FROM sections s
               JOIN programs p ON p.id = s.program_id
               WHERE p.code IN ({CCS_PROGRAM_SQL}) ORDER BY s.name""",
-        "headers": ["Section", "Enrolled"],
+        "headers": ["Section"],
         "fields": [F("name", "Section Name", ph="e.g. BSCS 2A"),
                                      F("program_id", "Academic Program", "fk",
                                          sql=f"SELECT id, code FROM programs WHERE code IN ({CCS_PROGRAM_SQL}) ORDER BY code",
-                     placeholder="Select a program"),
-                   F("enrollment", "Enrolled", "int", min=1, max=500, default=30, suffix=" students")],
-        "hint": "Enrollment is checked against room capacity in Module 4.",
+                     placeholder="Select a program")],
+        "hint": "Assign each section to its academic program.",
         "in_use": "It still has scheduled classes.",
-        "widths": {1: 140}, "flex": {0: 1},
+        "flex": {0: 1},
     },
     "subjects": {
         "tab": "Subjects", "singular": "Subject", "plural": "subjects", "table": "subjects",
@@ -92,15 +91,14 @@ ENTITIES = {
     },
     "classrooms": {
         "tab": "Classrooms", "singular": "Classroom", "plural": "classrooms", "table": "classrooms",
-        "sql": "SELECT id, name, floor, room_type, capacity FROM classrooms ORDER BY name",
-        "headers": ["Room", "Floor", "Type", "Capacity"],
+        "sql": "SELECT id, name, floor, room_type FROM classrooms ORDER BY name",
+        "headers": ["Room", "Floor", "Type"],
         "fields": [F("name", "Room Name", ph="e.g. Room 107"),
                F("floor", "Floor", ph="e.g. 1st Floor", required=False),
-                   F("room_type", "Room Type", "choice", options=[("Lecture","Lecture"),("Laboratory","Laboratory")]),
-                   F("capacity", "Capacity", "int", min=1, max=500, default=40, suffix=" seats")],
-        "hint": "Capacity is compared against section enrollment.",
+                   F("room_type", "Room Type", "choice", options=[("Lecture","Lecture"),("Laboratory","Laboratory")])],
+        "hint": "Assign rooms by type and availability.",
         "in_use": "It is used by scheduled classes.",
-        "widths": {0: 150, 3: 110}, "flex": {1: 1, 2: 2},
+        "widths": {0: 150}, "flex": {1: 1, 2: 2},
     },
     "terms": {
         "tab": "Academic Terms", "singular": "Academic Term", "plural": "terms", "table": "terms",
