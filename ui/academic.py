@@ -581,7 +581,7 @@ class AcademicPage(Page):
         chunk = rows[start:start + PAGE_SIZE]
 
         if self.tab == "subjects":
-            n_prog = db.row("SELECT COUNT(*) AS n FROM programs")["n"]
+            n_prog = db.row(f"SELECT COUNT(*) AS n FROM programs WHERE code IN ({CCS_PROGRAM_SQL})")["n"]
             self.card.subtitle.setText(f"{len(everything)} subjects across {n_prog} academic programs")
         else:
             self.card.subtitle.setText(f"{len(everything)} {ent['plural']}")
