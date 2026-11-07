@@ -396,6 +396,30 @@ class SystemTests(unittest.TestCase):
         self.assertEqual(existing['reason'], '')
         self.assertEqual(existing['start_min'], 480)
 
+    def test_bsis_is_not_supported_and_unlinked_legacy_row_is_cleaned(self):
+        self.assertEqual([code for code,_ in db.CCS_PROGRAMS],['BSCS','BSIT'])
+        db.conn.execute(
+            "INSERT INTO programs(code,name) VALUES('BSIS','BS Information Systems')")
+        db.conn.commit()
+        db.conn.close()
+        with tempfile.TemporaryDirectory() as directory:
+            path=os.path.join(directory,'legacy.db')
+            db.init(path)
+            db.conn.execute(
+                "INSERT INTO programs(code,name) VALUES('BSIS','BS Information Systems')")
+            db.conn.commit()
+            db.conn.close()
+            db.init(path)
+            self.assertIsNone(db.row("SELECT id FROM programs WHERE code='BSIS'"))
+            self.assertEqual(
+                [r['code'] for r in db.rows("SELECT code FROM programs ORDER BY code")],
+                ['BSCS','BSIT']
+            )
+            db.conn.close()
+        db.init(':memory:')
+        auth.init()
+        init_availability()
+
     def test_empty_database_workflow(self):
         db.conn.close(); db.init(':memory:'); auth.init(); init_availability()
         win=MainWindow(); win.show(); app.processEvents()
