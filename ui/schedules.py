@@ -20,7 +20,7 @@ LOOKUPS = (
     ("subject_id", "Subject", "SELECT id, code || ' — ' || title FROM subjects ORDER BY code"),
     ("section_id", "Section", "SELECT id, name FROM sections ORDER BY name"),
     ("faculty_id", "Faculty", "SELECT id, name FROM faculty ORDER BY name"),
-    ("room_id", "Classroom", "SELECT id, name || ' · ' || capacity || ' seats' FROM classrooms ORDER BY name"),
+    ("room_id", "Classroom", "SELECT id, name FROM classrooms ORDER BY name"),
 )
 
 SCHEDULES_PER_PAGE = 8
