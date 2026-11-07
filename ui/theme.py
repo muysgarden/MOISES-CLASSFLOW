@@ -14,8 +14,8 @@ COLORS = {
     "green": "#1AB883",
     "sky": "#2B9CDB",
     "surface": "#FFFFFF",
-    "page": "#F1F5FC",
-    "border": "#E4EAF3",
+    "page": "#EAF0F7",
+    "border": "#D5E0EE",
     "nav_hover": "#EFF3FB",
 }
 
