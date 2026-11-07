@@ -5,13 +5,13 @@ import db
 from ui.login import LoginDialog
 from ui.availability import init_availability
 from ui.main_window import MainWindow
-from ui.appearance import apply_mode
+from ui.style import build_qss
 
 
 def main():
     app=QApplication(sys.argv)
     app.setApplicationName('ClassFlow')
-    apply_mode()
+    app.setStyleSheet(build_qss())
     db.init(); auth.init(); init_availability()
     # No destructive reset flag: existing records are never silently erased.
     login = LoginDialog()
@@ -20,10 +20,7 @@ def main():
     if db.is_empty():
         if '--seed' in sys.argv or QMessageBox.question(None,'Welcome to ClassFlow','Load sample academic data to explore the system?\nChoose No to start with your own records.',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes:
             db.seed()
-    win=MainWindow(username=login.username.text().strip())
-    # Apply again after pages exist; some pages use local stylesheets.
-    apply_mode()
-    win.showMaximized()
+    win=MainWindow(username=login.username.text().strip()); win.showMaximized()
     return app.exec_()
 
 
