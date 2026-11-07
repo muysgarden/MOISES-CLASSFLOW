@@ -579,7 +579,7 @@ class ReportsPage(Page):
                 '<table width="100%" cellspacing="0" cellpadding="4"><tr>'
                 f'<td><b>Room:</b> {esc(room["name"])}</td>'
                 f'<td><b>Type:</b> {esc(kind)}</td>'
-                f'<td><b>Capacity:</b> {esc(room["capacity"])}</td>'
+
                 f'<td><b>Sections:</b> {esc(sections)}</td>'
                 '</tr></table>'
                 + table
@@ -600,7 +600,8 @@ class ReportsPage(Page):
         document = QTextDocument()
         document.setHtml(self.room_utilization_html(all_rooms=True))
         printer = QPrinter(QPrinter.HighResolution)
-        printer.setOrientation(QPrinter.Landscape)
+        printer.setPaperSize(QPrinter.A4)
+        printer.setOrientation(QPrinter.Portrait)
         printer.setOutputFormat(QPrinter.PdfFormat)
         printer.setOutputFileName(str(path))
         document.print_(printer)
@@ -618,7 +619,7 @@ class ReportsPage(Page):
             '.heading{font-size:13pt;font-weight:bold;margin-top:7px;}'
             '.meta{margin:13px 0 8px 0;font-size:9pt;}'
             '.report-name{margin:14px 0 6px 0;font-size:10pt;font-weight:bold;}'
-            'table{border-collapse:collapse;width:100%;}'
+            'table{border-collapse:collapse;width:100%;table-layout:fixed;}'
             'th,td{border:1px solid #788292;padding:4px;vertical-align:middle;}'
             'th{background-color:#e7ecf4;font-size:8pt;text-align:center;}'
             'td{font-size:7pt;}'
@@ -639,9 +640,8 @@ class ReportsPage(Page):
         )
 
     def _print_footer(self):
-        # Signatory names must be supplied/approved, not copied from the reference.
         return ('<div class="signature">Prepared by:<br/><br/>'
-                '________________________________<br/>Name / Signature / Designation</div>')
+                '________________________________</div>')
 
     def _schedule_groups(self):
         """Separate distinct timetable subjects so 'All' doesn't mix sections."""
@@ -697,7 +697,7 @@ class ReportsPage(Page):
         pages=[]
         for group_name,rows in groups:
             end_of_day=max([17*60]+[r['end_min'] for r in rows])
-            stop=min(20*60,((end_of_day+29)//30)*30)
+            stop=logic.CAL_END
             # A real class occupies its entire time interval. Build individual
             # day columns with rowspans to avoid repeating the class at every
             # 30-minute marker.
@@ -754,8 +754,8 @@ class ReportsPage(Page):
                         cols.append('<td></td>')
                 cells.append('<tr>'+''.join(cols)+'</tr>')
             table=(
-                '<table><thead><tr><th>PERIOD</th>'
-                +''.join(f'<th>{name}</th>' for _,name in days)
+                '<table width="100%"><thead><tr><th width="19%">PERIOD</th>'
+                +''.join(f'<th width="13.5%">{name}</th>' for _,name in days)
                 +'</tr></thead><tbody>'+''.join(cells)+'</tbody></table>'
             )
             pages.append(
@@ -805,7 +805,12 @@ class ReportsPage(Page):
         default_name = "ClassFlow-schedule-sheet.pdf" if self.report.currentText() in EXPORTABLE_SCHEDULES else "ClassFlow-report.pdf"
         path,_=QFileDialog.getSaveFileName(self,'Export PDF',default_name,'PDF (*.pdf)')
         if path:
-            printer=QPrinter(QPrinter.HighResolution); printer.setOrientation(QPrinter.Landscape); printer.setOutputFormat(QPrinter.PdfFormat); printer.setOutputFileName(path)
+            printer=QPrinter(QPrinter.HighResolution)
+            printer.setPaperSize(QPrinter.A4)
+            printer.setOrientation(QPrinter.Portrait)
+            printer.setPageMargins(8, 8, 8, 8, QPrinter.Millimeter)
+            printer.setOutputFormat(QPrinter.PdfFormat)
+            printer.setOutputFileName(path)
             document = self.document()
             if self.report.currentText() in EXPORTABLE_SCHEDULES:
                 self.print_schedule_pdf(printer, document)
@@ -814,7 +819,10 @@ class ReportsPage(Page):
             self.win.notify('PDF report exported.')
 
     def print_report(self):
-        printer=QPrinter(QPrinter.HighResolution); printer.setOrientation(QPrinter.Landscape)
+        printer=QPrinter(QPrinter.HighResolution)
+        printer.setPaperSize(QPrinter.A4)
+        printer.setOrientation(QPrinter.Portrait)
+        printer.setPageMargins(8, 8, 8, 8, QPrinter.Millimeter)
         if QPrintDialog(printer,self).exec_():
             document=self.document()
             if self.report.currentText() in EXPORTABLE_SCHEDULES:
