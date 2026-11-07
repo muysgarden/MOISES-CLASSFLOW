@@ -390,6 +390,8 @@ class SystemTests(unittest.TestCase):
         ):
             page.save()
             self.assertEqual(db.row('SELECT COUNT(*) FROM schedules')[0],before+1)
+            # Saving a schedule does not silently write files to Documents.
+            page.win.pages['reports'].save_schedule_sheet()
             device_pdf=os.path.join(directory,'ClassFlow','Schedules','ClassFlow-schedule-sheet-term-1.pdf')
             self.assertGreater(os.path.getsize(device_pdf),1000)
             record=db.row('SELECT MAX(id) FROM schedules')[0]
@@ -403,6 +405,7 @@ class SystemTests(unittest.TestCase):
             from PyQt5.QtWidgets import QMessageBox
             with patch.object(QMessageBox,'question',return_value=QMessageBox.Yes): page.delete(group)
             self.assertEqual(db.row('SELECT COUNT(*) FROM schedules')[0],before)
+            page.win.pages['reports'].save_schedule_sheet()
             self.assertGreater(os.path.getsize(device_pdf),1000)
         win.close()
 
@@ -572,6 +575,7 @@ class SystemTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             pdf=os.path.join(directory,'report.pdf')
             excel_path=os.path.join(directory,'schedule.xlsx')
+            reports.report.setCurrentText('Room Utilization Schedule')
             reports.room.setCurrentIndex(reports.room.findData(
                 db.row('SELECT id FROM classrooms WHERE name="Room 103"')['id']
             ))
@@ -639,22 +643,27 @@ class SystemTests(unittest.TestCase):
         db.init(':memory:')
         # tearDown closes the connection.
 
-    def test_schedule_report_filters_only_offer_specific_choices(self):
-        win=MainWindow(); reports=win.pages['reports']; reports.refresh()
+    def test_schedule_report_filters_support_all_and_individual_choices(self):
+        win=MainWindow()
+        reports=win.pages['reports']
+        reports.refresh()
         for report_name in ('Class Schedules', 'Faculty Schedules', 'Section Schedules'):
-            reports.report.setCurrentIndex(reports.report.findText(report_name))
-            for combo in (reports.program, reports.section, reports.faculty):
-                self.assertTrue(all(combo.itemData(i) is not None for i in range(combo.count())))
-                self.assertTrue(all(not combo.itemText(i).lower().startswith('all') for i in range(combo.count())))
-                self.assertIsNotNone(combo.currentData())
-
-        reports.report.setCurrentIndex(reports.report.findText('Room Utilization Schedule'))
+            reports.report.setCurrentText(report_name)
+            self.assertIsNone(reports.program.currentData())
+            self.assertIsNone(reports.section.currentData())
+            self.assertIsNone(reports.faculty.currentData())
+            self.assertEqual(reports.program.itemText(0), 'All programs')
+            self.assertEqual(reports.section.itemText(0), 'All sections')
+            self.assertEqual(reports.faculty.itemText(0), 'All faculty')
+        reports.report.setCurrentText('Room Utilization Schedule')
         self.assertEqual(reports.program.currentText(), 'All programs')
         self.assertEqual(reports.section.currentText(), 'All sections')
         self.assertEqual(reports.faculty.currentText(), 'All faculty')
         self.assertTrue(all(not combo.isEnabled() for combo in (
-            reports.program, reports.section, reports.faculty,
+            reports.program, reports.section, reports.faculty
         )))
+        self.assertTrue(all(reports.room.itemData(i) is not None
+                            for i in range(reports.room.count())))
         win.close()
 
     def test_all_pages_and_report(self):
