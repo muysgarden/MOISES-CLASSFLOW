@@ -1,6 +1,6 @@
 """Module 4: explain conflicts and link directly to the affected assignment."""
 
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, QDateTime, pyqtSignal
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QAbstractItemView, QHBoxLayout, QLabel, QSizePolicy
 
@@ -58,9 +58,15 @@ class ValidationPage(Page):
         self.active_priority = None
         self.add_header(
             "MODULE 04", "Conflict Checks",
-            "See which classes overlap, why they need attention, and where to edit them.",
-            [button("↻  Check Schedules", "primary", self.refresh)],
+            "Audit saved schedules. Critical overlaps are prevented when creating new assignments.",
+            [button("↻  Check Schedules", "primary", self.check_schedules)],
         )
+        self.check_feedback = label(
+            "Module 3 checks new assignments before saving; Module 4 audits "
+            "saved schedules for older conflicts, blocked resources and workload warnings.",
+            "muted", wrap=True
+        )
+        self.lay.addWidget(self.check_feedback)
         overview = QHBoxLayout()
         overview.setSpacing(12)
         self.lay.addLayout(overview)
@@ -147,6 +153,28 @@ class ValidationPage(Page):
     def view_selected(self):
         if self.selected_issue:
             self.win.go("schedules", edit_ids=self.selected_issue["edit_ids"])
+
+    def check_schedules(self):
+        """Explicit re-scan with feedback so the action is not indistinguishable
+        from the automatic refresh when opening this module.
+        """
+        self.refresh()
+        inspected = self.result["total"]
+        issues = self.result["issues"]
+        critical = self.result["critical"]
+        moment = QDateTime.currentDateTime().toString("h:mm AP")
+        self.check_feedback.setText(
+            f"Checked at {moment} · {inspected} saved assignments reviewed · "
+            f"{len(issues)} issues ({critical} critical). "
+            + ("Select an issue below for a direct link to its schedule."
+               if issues else
+               "No issues found. Module 3 is preventing new critical overlaps.")
+        )
+        self.win.notify(
+            f"Schedule check complete: {inspected} assignments, "
+            f"{len(issues)} issues, {critical} critical.",
+            "warning" if critical else "success"
+        )
 
     def refresh(self):
         self.result = logic.validate_term(self.win.term_id())
