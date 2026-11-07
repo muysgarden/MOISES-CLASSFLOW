@@ -240,8 +240,7 @@ class SystemTests(unittest.TestCase):
             rendered=document.toHtml()
             self.assertTrue(rendered, mode)
             self.assertIn('COLLEGE OF COMPUTER STUDIES',rendered)
-            self.assertIn('Prepared by:',rendered if mode!='Room Utilization Schedule'
-                          else rendered+'Prepared by:')
+            self.assertIn('Prepared by:',rendered)
         # Empty terms should produce an informative blank timetable, not crash.
         with db.conn:
             db.conn.execute('DELETE FROM schedules WHERE term_id=?',(win.term_id(),))
