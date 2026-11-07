@@ -70,6 +70,33 @@ class SchedulesPage(Page):
         )
         self._build_form()
         self._build_views()
+        self.add_header('MODULE 03', 'Schedule Management',
+                        'Assign classes to faculty, rooms, and time slots, then preview the weekly schedule.',
+                        [button('+  New Schedule', 'primary', self.clear)])
+        card=Card('Assign Class Schedule', 'All fields are required. Availability is checked automatically.')
+        self.lay.addWidget(card)
+        body=card.body(); row=QHBoxLayout(); body.addLayout(row)
+        self.fields={}
+        for key, title in [('subject_id','Subject'),('section_id','Section'),('faculty_id','Faculty'),('room_id','Classroom'),('days','Day'),('start','From'),('end','To')]:
+            combo=Combo(); self.fields[key]=combo; row.addWidget(labeled(title,combo),1)
+            combo.currentIndexChanged.connect(self.preview)
+        for value,text in logic.PATTERNS:
+            self.fields['days'].addItem(text,value)
+        for value,text in logic.TIME_CHOICES:
+            self.fields['start'].addItem(text,value); self.fields['end'].addItem(text,value)
+        self.fields['start'].setCurrentIndex(2); self.fields['end'].setCurrentIndex(5)
+        row.addWidget(button('Save Schedule','primary',self.save))
+        self.status=Banner('good','Select a class assignment to check availability.'); body.addWidget(self.status)
+        columns=QHBoxLayout(); self.lay.addLayout(columns)
+        self.section=Combo(); self.section.currentIndexChanged.connect(self.render)
+        self.section.addItem('All sections',None)
+        self.search=QLineEdit(); self.search.setPlaceholderText('Search schedules…'); self.search.textChanged.connect(self.render)
+        listing=Card('Existing Schedules','Assignments for the selected term',right=[self.section,self.search]); columns.addWidget(listing,6)
+        self.table=make_table(['Subject / Section','Faculty','Room','Schedule','Actions'],flex={0:3,1:3,2:2,3:3,4:3}); listing.add(self.table)
+        self.calendar_room=Combo(); self.calendar_room.currentIndexChanged.connect(self.render_calendar)
+        self.calendar_room.setMinimumWidth(150)
+        cal=Card('Room Utilization Schedule','Select one room to view its Monday–Saturday assignments and availability',right=[self.calendar_room]); columns.addWidget(cal,5)
+        self.calendar=CalendarWidget(); cal.body().addWidget(self.calendar)
         self.finish()
 
     def _build_form(self):
@@ -257,6 +284,18 @@ class SchedulesPage(Page):
         self.list_section.blockSignals(False)
         self.render()
         self.preview()
+        for key,sql in [('subject_id','SELECT id,code || " — " || title FROM subjects ORDER BY code'),('section_id','SELECT id,name FROM sections ORDER BY name'),('faculty_id','SELECT id,name FROM faculty ORDER BY name'),('room_id','SELECT id,name || " · " || capacity || " seats" FROM classrooms ORDER BY name')]:
+            combo=self.fields[key]; keep=combo.currentData(); combo.blockSignals(True); combo.clear()
+            for r in db.rows(sql): combo.addItem(r[1],r[0])
+            idx=combo.findData(keep); combo.setCurrentIndex(max(0,idx)); combo.blockSignals(False)
+        keep_room=self.calendar_room.currentData(); self.calendar_room.blockSignals(True); self.calendar_room.clear()
+        for r in db.rows('SELECT id,name FROM classrooms ORDER BY name'): self.calendar_room.addItem(r['name'],r['id'])
+        room_index=self.calendar_room.findData(keep_room)
+        self.calendar_room.setCurrentIndex(max(0,room_index)); self.calendar_room.blockSignals(False)
+        keep=self.section.currentData(); self.section.blockSignals(True); self.section.clear(); self.section.addItem('All sections',None)
+        for r in db.rows('SELECT id,name FROM sections ORDER BY name'): self.section.addItem(r['name'],r['id'])
+        self.section.setCurrentIndex(max(0,self.section.findData(keep)) if keep is not None else max(0,self.section.findText('BSCS 2A'))); self.section.blockSignals(False)
+        self.render(); self.preview()
 
     def values(self):
         values = {key: self._lookup_value(self.fields[key]) for key, _, _ in LOOKUPS}
@@ -354,6 +393,23 @@ class SchedulesPage(Page):
         self.editor.show()
         self.fields["subject_id"].setFocus()
         self.verticalScrollBar().setValue(0)
+        d=self.values()
+        if any(v is None for v in d.values()):
+            self.win.notify('Create subjects, sections, faculty, and classrooms first.','error'); return
+        issues=logic.check_candidate(self.win.term_id(),d['subject_id'],d['section_id'],d['faculty_id'],d['room_id'],d['days'].split(','),d['start'],d['end'],self.replace_ids)
+        if any(i['severity']==logic.CRITICAL for i in issues):
+            QMessageBox.warning(self,'Cannot save schedule','\n'.join(i['desc'] for i in issues)); return
+        if issues and QMessageBox.question(self,'Schedule warnings','\n'.join(i['desc'] for i in issues)+'\n\nSave anyway?',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)!=QMessageBox.Yes: return
+        logic.save_schedule(self.win.term_id(),d['subject_id'],d['section_id'],d['faculty_id'],d['room_id'],d['days'].split(','),d['start'],d['end'],self.replace_ids)
+        self.replace_ids=[]; self.win.data_changed(); self.render(); self.preview(); self.save_device_copy()
+
+    def save_device_copy(self):
+        try:
+            path = self.win.pages['reports'].save_schedule_sheet()
+        except (OSError, RuntimeError) as error:
+            self.win.notify(f'Schedule data was saved, but the device PDF could not be updated: {error}', 'error')
+        else:
+            self.win.notify(f'Schedule saved. Device PDF updated in {path.parent}.')
 
     def clear(self):
         self.replace_ids = []
@@ -469,6 +525,38 @@ class SchedulesPage(Page):
         self.win.notify("Schedule deleted.", "success")
 
     def open(self, edit_ids=None, **_kwargs):
+        for i,g in enumerate(groups):
+            for j,text in enumerate([g['code']+' · '+g['section'],g['faculty'],g['room'],g['days_label']+'\n'+g['time_label']]): self.table.setItem(i,j,text_item(text,bold=j==0))
+            actions=QWidget(); row=QHBoxLayout(actions); row.setContentsMargins(0,0,0,0)
+            row.addWidget(button('Edit','linkbtn',lambda _,g=g:self.edit(g)))
+            row.addWidget(button('Delete','danger',lambda _,g=g:self.delete(g)))
+            widget_cell(self.table,i,4,actions)
+        fit_table(self.table); self.render_calendar()
+
+    def render_calendar(self):
+        if not hasattr(self,'calendar'): return
+        room_id=self.calendar_room.currentData()
+        rows=[r for r in logic.schedule_rows(self.win.term_id()) if room_id is not None and r['room_id']==room_id]
+        self.calendar.set_rows(
+            rows, 'section', include_faculty=True, show_availability=True, room_id=room_id
+        )
+
+    def edit(self,g):
+        self.replace_ids=g['ids']
+        self.section.setCurrentIndex(self.section.findData(g['section_id']))
+        for k in ['subject_id','section_id','faculty_id','room_id']:
+            self.fields[k].setCurrentIndex(self.fields[k].findData(g[k]))
+        for k,v in [('days',g['days_csv']),('start',g['start_min']),('end',g['end_min'])]:
+            combo=self.fields[k]; idx=combo.findData(v)
+            if idx<0: combo.addItem(str(v),v); idx=combo.count()-1
+            combo.setCurrentIndex(idx)
+        self.preview(); self.verticalScrollBar().setValue(0)
+
+    def delete(self,g):
+        if QMessageBox.question(self,'Delete schedule','Delete '+g['code']+' for '+g['section']+'?',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes:
+            logic.delete_schedules(self.win.term_id(),g['ids']); self.replace_ids=[]; self.render(); self.preview(); self.win.data_changed(); self.save_device_copy()
+
+    def open(self,edit_ids=None,**kw):
         self.refresh()
         if edit_ids:
             for group in self.groups:

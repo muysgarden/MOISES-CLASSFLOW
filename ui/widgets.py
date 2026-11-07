@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import (
 )
 
 import logic
+import db
 
 
 class _NoWheel:
@@ -159,7 +160,7 @@ class Card(QFrame):
             head = QWidget()
             head.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
             h = QHBoxLayout(head)
-            h.setContentsMargins(18, 14, 18, 12)
+            h.setContentsMargins(16, 12, 16, 10)
             col = QVBoxLayout()
             col.setSpacing(1)
             self.title_label = label(title, "cardTitle")
@@ -176,7 +177,7 @@ class Card(QFrame):
         self.v.addWidget(widget)
         return widget
 
-    def body(self, margins=(18, 0, 18, 18), spacing=10):
+    def body(self, margins=(16, 0, 16, 16), spacing=8):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(*margins)
@@ -221,8 +222,8 @@ class Page(QScrollArea):
         body = QWidget()
         body.setObjectName("pagebody")
         self.lay = QVBoxLayout(body)
-        self.lay.setContentsMargins(24, 20, 24, 28)
-        self.lay.setSpacing(16)
+        self.lay.setContentsMargins(18, 16, 18, 20)
+        self.lay.setSpacing(12)
         self.setWidget(body)
 
     def add_header(self, eyebrow, title, subtitle, actions=()):
@@ -442,7 +443,7 @@ class BarChart(QWidget):
 
 class CalendarWidget(QWidget):
 
-    HEADER, TIMECOL, ROW_H = 30, 66, 44
+    HEADER, TIMECOL, ROW_H, SLOT_MINUTES = 30, 66, 22, 30
     COLORS = {  # background, accent, text
         "major": ("#e8eff8", "#214777", "#203b68"),
         "ged": ("#e0f2f7", "#268db7", "#137b98"),
@@ -457,11 +458,29 @@ class CalendarWidget(QWidget):
         if step_minutes == 30:
             self.ROW_H = 29
         self.setFixedHeight(self.HEADER + self.hours * self.ROW_H + 2)
+        self.rows, self.sub_key, self.include_faculty = [], "room", False
+        self.show_availability, self.unavailable = False, {}
+        self.slots = (logic.CAL_END - logic.CAL_START) // self.SLOT_MINUTES
+        self.setFixedHeight(self.HEADER + self.slots * self.ROW_H + 2)
         self.setMinimumWidth(480)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-    def set_rows(self, rows, sub_key="room"):
-        self.rows, self.sub_key = rows, sub_key
+    def set_rows(self, rows, sub_key="room", include_faculty=False, show_availability=False, room_id=None):
+        self.rows, self.sub_key, self.include_faculty = rows, sub_key, include_faculty
+        self.show_availability, self.unavailable = show_availability, {}
+        if show_availability and room_id is not None and db.row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='unavailable'"
+        ):
+            for record in db.rows(
+                "SELECT day,start_min,end_min FROM unavailable WHERE kind='room' AND resource_id=?",
+                (room_id,),
+            ):
+                self.unavailable.setdefault(record["day"], []).append(record)
+        self.setToolTip("\n".join(
+            f"{r['day']} {logic.fmt(r['start_min'])}–{logic.fmt(r['end_min'])}: "
+            f"{r['code']} · {r['section']} · {r['faculty']} · {r['room']}"
+            for r in rows
+        ))
         self.update()
 
     def paintEvent(self, _):
@@ -483,15 +502,39 @@ class CalendarWidget(QWidget):
 
         f.setBold(False)
         p.setFont(f)
-        for h in range(self.hours):
-            y = self.HEADER + h * self.ROW_H
-            p.setPen(QPen(QColor("#eef0f6"), 1))
+        for slot in range(self.slots):
+            y = self.HEADER + slot * self.ROW_H
+            start = logic.CAL_START + slot * self.SLOT_MINUTES
+            end = start + self.SLOT_MINUTES
+            if self.show_availability:
+                for day_index, day in enumerate(logic.DAY_CODES):
+                    occupied = any(
+                        row["day"] == day and logic.overlap(start, end, row["start_min"], row["end_min"])
+                        for row in self.rows
+                    )
+                    if not occupied:
+                        unavailable = any(
+                            logic.overlap(start, end, window["start_min"], window["end_min"])
+                            for window in self.unavailable.get(day, [])
+                        )
+                        x = self.TIMECOL + day_index * colw
+                        if unavailable:
+                            p.setPen(QPen(QColor("#000000"), 1))
+                            p.drawLine(int(x + 2), int(y + self.ROW_H - 2),
+                                       int(x + colw - 2), int(y + 2))
+            grid_color = "#000000" if self.show_availability else "#eef0f6"
+            p.setPen(QPen(QColor(grid_color), 1))
             p.drawLine(self.TIMECOL, y, W, y)
             p.setPen(QColor("#7b869c"))
             p.drawText(QRectF(0, y + (2 if h == 0 else -7), self.TIMECOL - 8, 14),
                        Qt.AlignRight | Qt.AlignVCenter,
                        logic.fmt(logic.CAL_START + h * self.step_minutes))
         p.setPen(QPen(QColor("#e6e9f0"), 1))
+            p.setPen(QColor("#000000" if self.show_availability else "#7b869c"))
+            p.drawText(QRectF(0, y, self.TIMECOL - 8, self.ROW_H),
+                       Qt.AlignRight | Qt.AlignVCenter,
+                       logic.fmt(logic.CAL_START + slot * self.SLOT_MINUTES))
+        p.setPen(QPen(QColor("#000000" if self.show_availability else "#e6e9f0"), 1))
         for i in range(7):
             x = self.TIMECOL + i * colw
             p.drawLine(int(x), 0, int(x), H)
@@ -505,13 +548,20 @@ class CalendarWidget(QWidget):
             h = max((e - s) / self.step_minutes * self.ROW_H - 3, 18)
             bg, accent, fg = self.COLORS[r["category"]]
             p.setPen(Qt.NoPen)
+            y = self.HEADER + (s - logic.CAL_START) / self.SLOT_MINUTES * self.ROW_H + 1
+            h = max((e - s) / self.SLOT_MINUTES * self.ROW_H - 3, self.ROW_H - 3)
+            bg, accent, fg = ("#ffffff", "#000000", "#000000") if self.show_availability else self.COLORS[r["category"]]
+            p.setPen(QPen(QColor("#000000"), 1) if self.show_availability else Qt.NoPen)
             p.setBrush(QColor(bg))
             p.drawRoundedRect(QRectF(x, y, colw - 6, h), 6, 6)
             p.setBrush(QColor(accent))
             p.drawRoundedRect(QRectF(x, y, 4, h), 2, 2)
             p.setPen(QColor(fg))
             tw = int(colw - 6 - 14)
-            lines = [(r["code"], True), (str(r[self.sub_key]), False),
+            details = str(r[self.sub_key])
+            if self.include_faculty:
+                details = f"{details} · {r['faculty']}"
+            lines = [(r["code"], True), (details, False),
                      (f"{logic.fmt(r['start_min'])} – {logic.fmt(r['end_min'])}", False)]
             ty = y + 4
             for text, bold in lines:
