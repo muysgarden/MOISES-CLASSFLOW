@@ -20,7 +20,7 @@ def main():
     if db.is_empty():
         if '--seed' in sys.argv or QMessageBox.question(None,'Welcome to ClassFlow','Load sample academic data to explore the system?\nChoose No to start with your own records.',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes:
             db.seed()
-    win=MainWindow(username=login.username.text().strip()); win.show()
+    win=MainWindow(username=login.username.text().strip()); win.showMaximized()
     return app.exec_()
 
 
