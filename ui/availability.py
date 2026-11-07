@@ -417,7 +417,7 @@ class AvailabilityPage(Page):
             ))
         else:
             v.addWidget(self._label(
-                f"{record['room_type']} · {record['capacity']} seats · "
+                f"{record['room_type']} · "
                 f"{record['floor'] or 'Floor not set'}",
                 "availInfo",
             ))
