@@ -319,7 +319,7 @@ def suggest_schedule_slots(term_id, subject_id, section_id, faculty_id,
         duration=int(duration)
     except (TypeError,ValueError):
         duration=90
-    duration=max(30,min(240,((duration+29)//30)*30))
+    duration=max(30,((duration+29)//30)*30)
     if duration>CAL_END-CAL_START:
         return []
     wanted_days=set(preferred_days or ())
