@@ -1,9 +1,11 @@
 import os
 import tempfile
+from string import Template
 
 from PyQt5.QtCore import QPointF, Qt
 from PyQt5.QtGui import QColor, QPainter, QPalette, QPixmap, QPolygonF
 from PyQt5.QtWidgets import QApplication
+from ui.theme import COLORS, gradient
 
 QSS = """
 * { font-family: "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif; font-size: 13px; color: #1c2b4a; }
@@ -273,7 +275,7 @@ def build_qss():
     _arrow(down)
     _arrow(up, up=True)
     down, up = down.replace("\\", "/"), up.replace("\\", "/")
-    return QSS + POLISH_QSS + REFERENCE_QSS + f"""
+    return QSS + POLISH_QSS + REFERENCE_QSS + PHASE1_QSS + f"""
 QComboBox::drop-down {{ border: none; width: 26px; subcontrol-origin: padding; subcontrol-position: center right; }}
 QComboBox::down-arrow {{ image: url("{down}"); width: 10px; height: 6px; }}
 QSpinBox::up-button, QTimeEdit::up-button {{ subcontrol-origin: border; subcontrol-position: top right; width: 22px; border: none; }}
@@ -306,3 +308,132 @@ QPushButton#tab:checked { border-bottom:2px solid #14b8a6; }
 #banner[kind="warn"] QLabel { color:#916018; }
 #formHead { border-top-left-radius:6px; border-top-right-radius:6px; }
 """
+
+
+# One central palette, layered last over the older module styling. Phase 1
+# changes the app shell and shared visual language without rewriting module
+# workflows (those will be addressed individually in later phases).
+PHASE1_QSS = Template("""
+/* Native-feeling Windows typography; fallbacks work on older Windows versions. */
+* { font-family: "Segoe UI Variable Text", "Segoe UI", Arial, sans-serif; font-size: 13px; color: $ink; }
+QMainWindow, #workspace, #pagebody, QScrollArea, #dashboardCanvas {
+    background: $page;
+}
+QToolTip { background: $ink; color: white; border: none; padding: 6px 9px; }
+
+/* Shell and compact, readable white sidebar. */
+#sidebar { background: $surface; border-right: 1px solid $border; }
+#sidebar QLabel { color: $ink; background: transparent; }
+#logo { background: $gradient; border-radius: 13px; }
+#brandName { font-family: "Segoe UI Variable Display", "Segoe UI", Arial; color: $ink; font-size: 21px; font-weight: 700; }
+#brandSub { color: $muted; font-size: 10px; letter-spacing: 0.4px; }
+#sidebarDivider { background: $border; border: none; }
+#navLabel { color: $muted; font-size: 11px; font-weight: 650; letter-spacing: 0.5px; }
+QPushButton#nav { background: transparent; border: none; border-radius: 12px; text-align: left; padding: 0; }
+QPushButton#nav:hover { background: $nav_hover; }
+QPushButton#nav:checked, QPushButton#nav:checked:hover { background: $gradient; border: none; }
+#sidebar QPushButton#nav QLabel { color: #52627A; font-size: 13px; }
+#sidebar QPushButton#nav:checked QLabel { color: #FFFFFF; font-weight: 650; }
+#sidebar #brandSub { color: $muted; }
+QPushButton#profileTrigger {
+    background: #F8FAFD; border: 1px solid $border;
+    border-radius: 11px; padding: 0; text-align: left;
+}
+QPushButton#profileTrigger:hover { background: #EEF3FF; border-color: #C8D7F8; }
+#sidebar QPushButton#profileTrigger QLabel { background: transparent; color: $ink; }
+#sidebar QPushButton#profileTrigger QLabel#avatarTop {
+    background: $gradient; color: white; border-radius: 17px;
+}
+#profileChevron { color: $muted; font-size: 19px; }
+#userName { color: $ink; font-size: 12px; font-weight: 700; }
+#avatarTop { background: $gradient; color: white; border-radius: 17px; font-size: 15px; font-weight: 700; }
+QPushButton#sidebarLogout {
+    background: transparent; color: #A84C52; border: none;
+    border-radius: 9px; text-align: left; padding-left: 18px;
+    font-size: 12px; font-weight: 600;
+}
+QPushButton#sidebarLogout:hover { background: #FFF0F0; }
+
+/* Search is real and uses a database-backed popup. */
+#topbar { background: $surface; border-bottom: 1px solid $border; }
+#topTitle { font-family: "Segoe UI Variable Display", "Segoe UI", Arial; color: $ink; font-size: 18px; font-weight: 650; }
+#topContext { color: $muted; font-size: 12px; }
+QLineEdit#globalSearch {
+    background: #F7F9FD; border: 1px solid $border; border-radius: 17px;
+    min-height: 36px; padding: 2px 14px; color: $ink;
+}
+QLineEdit#globalSearch:focus { background: white; border: 1px solid $blue; }
+QComboBox#termSelector { min-height: 35px; border-radius: 11px; background: white; }
+QListView { background: white; border: 1px solid $border; border-radius: 10px; outline: 0; }
+QListView::item { padding: 10px 12px; color: $ink; }
+QListView::item:selected { color: $deep_blue; background: #EAF1FF; }
+
+/* Dashboard cards, shortcuts, and genuine schedule summaries. */
+#dashboardPage, #dashboardCanvas { background: $page; }
+#dashSub { color: $muted; font-size: 12px; }
+#dashClock { color: $ink; font-size: 14px; font-weight: 650; }
+#metricCard {
+    background: white; border: 1px solid $border; border-radius: 14px;
+}
+#metricTitle { color: #4A5A70; font-size: 13px; }
+#metricValue { color: #16243A; font-size: 27px; font-weight: 700; }
+#metricNote { color: $muted; font-size: 11px; }
+#metricIcon { border-radius: 11px; font-size: 13px; font-weight: 750; color: white; }
+#metricIcon[tone="blue"] { background: $blue; }
+#metricIcon[tone="purple"] { background: $purple; }
+#metricIcon[tone="orange"] { background: $orange; }
+#metricIcon[tone="green"] { background: $green; }
+#metricIcon[tone="sky"] { background: $sky; }
+#dashSection { font-family: "Segoe UI Variable Display", "Segoe UI", Arial; color: $ink; font-size: 19px; font-weight: 650; }
+#dashEmpty { background: white; border: 1px solid $border; border-radius: 12px;
+    color: $muted; padding: 18px; font-size: 12px; }
+QPushButton#quickAction {
+    text-align: left; padding: 0;
+    background: white; border: 1px dashed #D8E0EF; border-radius: 13px;
+}
+QPushButton#quickAction:hover { background: #F4F7FF; border: 1px solid $blue; }
+QPushButton#quickAction QLabel { background: transparent; }
+#quickTitle { color: $ink; font-size: 12px; font-weight: 700; }
+#quickSub { color: $muted; font-size: 10px; }
+#quickIcon { color: white; border-radius: 10px; font-size: 17px; font-weight: 750; }
+#quickIcon[tone="blue"] { background: $blue; }
+#quickIcon[tone="purple"] { background: $purple; }
+#quickIcon[tone="green"] { background: $green; }
+#quickIcon[tone="orange"] { background: $orange; }
+QPushButton#recentRow { text-align: left; padding: 0;
+    background: white; border: 1px solid $border; border-radius: 11px;
+}
+QPushButton#recentRow:hover { background: #F5F8FF; border: 1px solid #B9CBF2; }
+QPushButton#recentRow QLabel { background: transparent; }
+#recentDot { color: $green; font-size: 13px; }
+#recentTitle { color: $ink; font-size: 12px; font-weight: 700; }
+#recentSub { color: $muted; font-size: 11px; }
+#recentArrow { color: $muted; font-size: 19px; }
+#healthBanner { background: $gradient; border: none; border-radius: 16px; }
+#healthBanner QLabel { background: transparent; color: white; }
+#healthTitle { font-size: 20px; font-weight: 650; }
+#healthStatus { font-size: 12px; font-weight: 700; }
+#healthSummary { font-size: 12px; }
+QProgressBar#healthProgress { background: rgba(255,255,255,0.25);
+    border: none; border-radius: 5px; }
+QProgressBar#healthProgress::chunk { background: #FFFFFF; border-radius: 5px; }
+
+/* Updated shared accents; module-specific form logic is left unchanged. */
+#eyebrow { color: $deep_blue; }
+#h2, #cardTitle { color: $ink; }
+#h2 { font-family: "Segoe UI Variable Display", "Segoe UI", Arial; font-size: 24px; font-weight: 650; }
+#cardTitle { font-size: 15px; font-weight: 650; }
+#muted { color: $muted; font-size: 12px; }
+#fieldLabel { color: $muted; font-size: 11px; font-weight: 650; }
+QHeaderView::section { font-size: 11px; font-weight: 650; }
+QPushButton { font-weight: 600; }
+QFrame#card, QFrame#recordPanel, #tabbar { border: 1px solid $border; border-radius: 13px; }
+#formHead { background: $gradient; border-top-left-radius: 12px; border-top-right-radius: 12px; }
+QPushButton#primary, QPushButton#smallPrimary {
+    background: $deep_blue; color: white; border-color: $deep_blue; border-radius: 10px;
+}
+QPushButton#primary:hover, QPushButton#smallPrimary:hover { background: $blue; border-color: $blue; }
+QPushButton#tab:checked { background: #EAF0FF; color: $deep_blue; border-bottom: 2px solid $purple; }
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QTimeEdit:focus { border: 1px solid $blue; }
+QComboBox QAbstractItemView { selection-background-color: #EAF1FF; selection-color: $ink; }
+""").substitute(**COLORS, gradient=gradient())

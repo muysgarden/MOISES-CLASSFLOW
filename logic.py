@@ -21,9 +21,9 @@ PATTERNS = [
     ("Thu", "Thursday"), ("Fri", "Friday"), ("Sat", "Saturday"),
 ]
 
-CAL_START, CAL_END = 7 * 60, 20 * 60
+CAL_START, CAL_END = 7 * 60, 17 * 60
 TIME_CHOICES = [(m, "") for m in range(CAL_START, CAL_END + 1, 30)]
-BLOCKS = [(8 * 60, 12 * 60, "8 AM–12 PM"), (13 * 60, 17 * 60, "1 PM–5 PM"), (17 * 60, 20 * 60, "5 PM–8 PM")]
+BLOCKS = [(7 * 60, 10 * 60, "7 AM–10 AM"), (10 * 60, 13 * 60, "10 AM–1 PM"), (13 * 60, 17 * 60, "1 PM–5 PM")]
 
 
 def fmt(m):
@@ -39,10 +39,8 @@ def overlap(a1, a2, b1, b2):
 
 
 def school_window():
-    r = db.row("SELECT MIN(start_min) AS lo, MAX(end_min) AS hi FROM periods")
-    if r is None or r["lo"] is None:
-        return CAL_START, CAL_END
-    return r["lo"], r["hi"]
+    # School-wide operating hours take precedence over legacy database periods.
+    return CAL_START, CAL_END
 
 
 def category(code, subject_type):
@@ -122,13 +120,21 @@ def check_candidate(term_id, subject_id, section_id, faculty_id, room_id, days, 
     issues = []
     lo, hi = school_window()
     if start < lo or end > hi:
-        issues.append(_issue("Invalid Time", REVIEW,
+        issues.append(_issue("Invalid Time", CRITICAL,
                              f"Class falls outside the school period ({fmt(lo)}–{fmt(hi)})."))
 
     if not days or any(day not in DAY_CODES for day in days):
         return [_issue("Invalid Time", CRITICAL, "Select at least one valid day.")]
     if any(x is None for x in (subject, section, faculty, room)):
         return [_issue("Invalid Assignment", CRITICAL, "A selected record no longer exists. Refresh and try again.")]
+    if not db.row(
+        "SELECT 1 FROM subject_programs WHERE subject_id=? AND program_id=?",
+        (subject_id, section["program_id"]),
+    ):
+        issues.append(_issue(
+            "Course Mismatch", CRITICAL,
+            f"{subject['code']} is not assigned to the selected section's academic program.",
+        ))
     if db.row("SELECT 1 FROM sqlite_master WHERE type='table' AND name='unavailable'"):
         for kind, rid, name in (("faculty", faculty_id, faculty['name']), ("room", room_id, room['name'])):
             for window in db.rows("SELECT * FROM unavailable WHERE kind=? AND resource_id=?", (kind, rid)):
@@ -151,11 +157,6 @@ def check_candidate(term_id, subject_id, section_id, faculty_id, room_id, days, 
         if r["section_id"] == section_id:
             issues.append(_issue("Section Conflict", CRITICAL,
                                  f"{section['name']} already has {r['code']} on {when}."))
-
-    if room["capacity"] < section["enrollment"]:
-        issues.append(_issue("Capacity Problem", WARNING,
-                             f"{room['name']} capacity ({room['capacity']}) is below section enrollment "
-                             f"({section['enrollment']})."))
 
     q = """SELECT DISTINCT s.subject_id, s.section_id, sub.units FROM schedules s
            JOIN subjects sub ON sub.id = s.subject_id WHERE s.term_id=? AND s.faculty_id=?"""
@@ -220,14 +221,17 @@ def validate_term(term_id):
                 gb = row_group[b["id"]]
                 if ga is gb or not overlap(a["start_min"], a["end_min"], b["start_min"], b["end_min"]):
                     continue
+                when = (f"{day} {fmt(max(a['start_min'], b['start_min']))}–"
+                        f"{fmt(min(a['end_min'], b['end_min']))}")
                 for kind, same, desc in (
                     ("Faculty Conflict", a["faculty_id"] == b["faculty_id"],
-                     f"{a['faculty']} is assigned to {a['code']} and {b['code']} at the same time ({day})."),
+                     f"{a['faculty']} teaches both {a['code']} ({a['section']}) and "
+                     f"{b['code']} ({b['section']}) during {when}."),
                     ("Classroom Conflict", a["room_id"] == b["room_id"],
-                     f"{a['room']} is already occupied by {b['code']} ({b['section']}) on {day} "
-                     f"{fmt(b['start_min'])}."),
+                     f"{a['room']} is assigned to both {a['code']} ({a['section']}) "
+                     f"and {b['code']} ({b['section']}) during {when}."),
                     ("Section Conflict", a["section_id"] == b["section_id"],
-                     f"{a['section']} has {a['code']} and {b['code']} overlapping on {day}."),
+                     f"{a['section']} has both {a['code']} and {b['code']} during {when}."),
                 ):
                     key = (kind, frozenset((id(ga), id(gb))))
                     if same and key not in seen:
@@ -238,13 +242,10 @@ def validate_term(term_id):
     load, last = defaultdict(int), {}
     load_pairs = set()
     for g in groups:
-        if g["capacity"] < g["enrollment"]:
-            push("Capacity Problem", WARNING, g,
-                 f"{g['room']} capacity ({g['capacity']}) is below section enrollment ({g['enrollment']}).")
         if g["end_min"] <= g["start_min"]:
             push("Invalid Time", CRITICAL, g, "End time is not after the start time.")
         elif g["start_min"] < lo or g["end_min"] > hi:
-            push("Invalid Time", REVIEW, g, "Class ends outside the designated school period."
+            push("Invalid Time", CRITICAL, g, "Class ends outside the designated school period."
                  if g["end_min"] > hi else "Class starts outside the designated school period.")
         pair = (g["faculty_id"], g["subject_id"], g["section_id"])
         if pair not in load_pairs:
@@ -278,3 +279,105 @@ def progress(term_id):
     done = db.row("SELECT COUNT(*) AS n FROM (SELECT DISTINCT section_id, subject_id FROM schedules WHERE term_id=?)",
                   (term_id,))["n"]
     return min(100, round(100 * done / need)) if need else 0
+
+
+def suggest_schedule_slots(term_id, subject_id, section_id, faculty_id,
+                           duration=90, preferred_days=(), preferred_start=None,
+                           preferred_room_id=None, exclude_ids=(), limit=3):
+    """Rank real conflict-free day/time/room options within school hours.
+
+    These are suggestions, not assignments. Never save them automatically.
+    Blocked faculty/room windows and existing assignments are respected.
+    """
+    if any(x is None for x in (subject_id, section_id, faculty_id)):
+        return []
+    subject=db.row("SELECT * FROM subjects WHERE id=?",(subject_id,))
+    section=db.row("SELECT * FROM sections WHERE id=?",(section_id,))
+    faculty=db.row("SELECT * FROM faculty WHERE id=?",(faculty_id,))
+    if not (subject and section and faculty):
+        return []
+    if not db.row(
+        "SELECT 1 FROM subject_programs WHERE subject_id=? AND program_id=?",
+        (subject_id,section['program_id'])
+    ):
+        return []
+    rooms=db.rows("SELECT id,name,room_type FROM classrooms ORDER BY name")
+    if not rooms:
+        return []
+    current=[
+        record for record in schedule_rows(term_id)
+        if record["id"] not in set(exclude_ids)
+    ]
+    blocked=[]
+    if db.row("SELECT 1 FROM sqlite_master WHERE type='table' AND name='unavailable'"):
+        blocked=db.rows(
+            "SELECT kind,resource_id,day,start_min,end_min FROM unavailable "
+            "WHERE (kind='faculty' AND resource_id=?) OR kind='room'",
+            (faculty_id,)
+        )
+    try:
+        duration=int(duration)
+    except (TypeError,ValueError):
+        duration=90
+    duration=max(30,((duration+29)//30)*30)
+    if duration>CAL_END-CAL_START:
+        return []
+    wanted_days=set(preferred_days or ())
+    candidates=[]
+    for day_index,day in enumerate(DAY_CODES):
+        for start in range(CAL_START,CAL_END-duration+1,30):
+            end=start+duration
+            faculty_busy=any(
+                record['day']==day and
+                (record['faculty_id']==faculty_id or record['section_id']==section_id) and
+                overlap(start,end,record['start_min'],record['end_min'])
+                for record in current
+            )
+            faculty_blocked=any(
+                block['kind']=='faculty' and block['day']==day and
+                overlap(start,end,block['start_min'],block['end_min'])
+                for block in blocked
+            )
+            if faculty_busy or faculty_blocked:
+                continue
+            for room in rooms:
+                if subject['room_type']=='Laboratory' and room['room_type']!='Laboratory':
+                    continue
+                room_busy=any(
+                    record['day']==day and record['room_id']==room['id'] and
+                    overlap(start,end,record['start_min'],record['end_min'])
+                    for record in current
+                )
+                room_blocked=any(
+                    block['kind']=='room' and block['resource_id']==room['id'] and
+                    block['day']==day and
+                    overlap(start,end,block['start_min'],block['end_min'])
+                    for block in blocked
+                )
+                if room_busy or room_blocked:
+                    continue
+                score=day_index*6+(start-CAL_START)/30
+                if wanted_days:
+                    score+=0 if day in wanted_days else 35
+                if preferred_start is not None:
+                    score+=abs(start-preferred_start)/30*2
+                if preferred_room_id is not None and room['id']!=preferred_room_id:
+                    score+=8
+                if subject['preferred_room_id'] is not None and room['id']!=subject['preferred_room_id']:
+                    score+=4
+                candidates.append({
+                    'day':day,'start_min':start,'end_min':end,
+                    'room_id':room['id'],'room':room['name'],'score':score,
+                })
+    candidates.sort(key=lambda item:(item['score'],item['day'],item['start_min'],item['room']))
+    results=[]
+    used=set()
+    for item in candidates:
+        signature=(item['day'],item['start_min'],item['end_min'])
+        if signature in used:
+            continue
+        used.add(signature)
+        results.append(item)
+        if len(results)>=limit:
+            break
+    return results

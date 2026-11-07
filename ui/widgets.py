@@ -147,9 +147,9 @@ class Card(QFrame):
         super().__init__()
         self.setObjectName("card")
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(22)
-        shadow.setColor(QColor(18, 39, 82, 28))
-        shadow.setOffset(0, 3)
+        shadow.setBlurRadius(30)
+        shadow.setColor(QColor(28, 48, 88, 45))
+        shadow.setOffset(0, 4)
         self.setGraphicsEffect(shadow)
         self.v = QVBoxLayout(self)
         self.v.setContentsMargins(0, 0, 0, 0)
@@ -450,8 +450,12 @@ class CalendarWidget(QWidget):
         "lab": ("#fff4df", "#d89b3b", "#916018"),
     }
 
-    def __init__(self):
+    def __init__(self, step_minutes=60):
         super().__init__()
+        self.rows, self.sub_key = [], "room"
+        self.step_minutes = step_minutes
+        self.SLOT_MINUTES = step_minutes
+        self.ROW_H = 29 if step_minutes == 30 else 44
         self.rows, self.sub_key, self.include_faculty = [], "room", False
         self.show_availability, self.unavailable = False, {}
         self.slots = (logic.CAL_END - logic.CAL_START) // self.SLOT_MINUTES

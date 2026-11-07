@@ -1,13 +1,13 @@
 import os
 import sqlite3
+import json
 import sys
 from pathlib import Path
 
 DAYS = [("Mon", "Monday"), ("Tue", "Tuesday"), ("Wed", "Wednesday"),
         ("Thu", "Thursday"), ("Fri", "Friday"), ("Sat", "Saturday")]
 SUBJECT_TYPES = [("Lecture", "Lecture"), ("Laboratory", "Laboratory"), ("Lecture + Lab", "Lecture + Lab")]
-CCS_PROGRAMS = [("BSCS", "BS Computer Science"), ("BSIT", "BS Information Technology"),
-                ("BSIS", "BS Information Systems")]
+CCS_PROGRAMS = [("BSCS", "BS Computer Science"), ("BSIT", "BS Information Technology")]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS programs(
@@ -42,7 +42,114 @@ CREATE TABLE IF NOT EXISTS schedules(
     room_id INTEGER NOT NULL REFERENCES classrooms(id),
     day TEXT NOT NULL, start_min INTEGER NOT NULL, end_min INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_sched_term_day ON schedules(term_id, day);
+CREATE TABLE IF NOT EXISTS sample_records(
+    table_name TEXT NOT NULL, record_id INTEGER NOT NULL, snapshot TEXT NOT NULL,
+    PRIMARY KEY(table_name, record_id));
+CREATE TABLE IF NOT EXISTS sample_subject_links(
+    subject_id INTEGER NOT NULL, program_id INTEGER NOT NULL,
+    PRIMARY KEY(subject_id, program_id));
 """
+
+SAMPLE_TABLES = (
+    "terms", "periods", "programs", "subjects", "sections",
+    "faculty", "classrooms", "schedules",
+)
+
+
+def _snapshot(record):
+    return json.dumps(list(tuple(record)), ensure_ascii=False)
+
+
+def sample_count():
+    """Count still-existing, explicitly marked sample rows (never infer from names)."""
+    return sum(conn.execute(
+        f"SELECT COUNT(*) FROM sample_records m JOIN {table} t ON t.id=m.record_id "
+        "WHERE m.table_name=?", (table,)
+    ).fetchone()[0] for table in SAMPLE_TABLES)
+
+
+def clear_sample_data():
+    """Remove only original tagged samples, atomically; leave other records alone.
+
+    If samples were edited, or new records reference them, cleanup refuses
+    rather than making irreversible guesses about ownership.
+    """
+    if not sample_count():
+        return 0
+    try:
+        with conn:
+            tagged = {}
+            for table in SAMPLE_TABLES:
+                tagged[table] = []
+                for mark in conn.execute(
+                    "SELECT record_id, snapshot FROM sample_records WHERE table_name=?",
+                    (table,)
+                ).fetchall():
+                    record = conn.execute(
+                        f"SELECT * FROM {table} WHERE id=?", (mark["record_id"],)
+                    ).fetchone()
+                    if record is None:
+                        continue
+                    if _snapshot(record) != mark["snapshot"]:
+                        raise ValueError(
+                            f"Sample {table} record #{mark['record_id']} was edited. "
+                            "Review it manually before clearing samples."
+                        )
+                    tagged[table].append(mark["record_id"])
+            sample_links = {
+                (r["subject_id"], r["program_id"]) for r in conn.execute(
+                    "SELECT subject_id, program_id FROM sample_subject_links"
+                )
+            }
+            for sid in tagged["subjects"]:
+                links = {
+                    (r["subject_id"], r["program_id"]) for r in conn.execute(
+                        "SELECT subject_id, program_id FROM subject_programs WHERE subject_id=?",
+                        (sid,)
+                    )
+                }
+                if not links <= sample_links:
+                    raise ValueError(
+                        "A demo subject has new program assignments. "
+                        "Review those relationships before clearing samples."
+                    )
+            # Availability windows are entered by the administrator and are
+            # not demo records. Never silently erase those windows or leave
+            # them pointing at a resource removed by cleanup.
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='unavailable'"
+            ).fetchone():
+                for kind, table in (("faculty", "faculty"), ("room", "classrooms")):
+                    for rid in tagged[table]:
+                        if conn.execute(
+                            "SELECT 1 FROM unavailable WHERE kind=? AND resource_id=? LIMIT 1",
+                            (kind, rid)
+                        ).fetchone():
+                            raise ValueError(
+                                "A demo faculty member or room has manually blocked times. "
+                                "Remove those unavailable windows in Module 2 before clearing samples."
+                            )
+            for sid, pid in sample_links:
+                if sid in tagged["subjects"]:
+                    conn.execute(
+                        "DELETE FROM subject_programs WHERE subject_id=? AND program_id=?",
+                        (sid, pid)
+                    )
+            removed = 0
+            for table in ("schedules", "subjects", "sections", "faculty",
+                          "classrooms", "programs", "periods", "terms"):
+                for rid in tagged[table]:
+                    removed += conn.execute(
+                        f"DELETE FROM {table} WHERE id=?", (rid,)
+                    ).rowcount
+            conn.execute("DELETE FROM sample_subject_links")
+            conn.execute("DELETE FROM sample_records")
+            return removed
+    except sqlite3.IntegrityError as exc:
+        raise ValueError(
+            "Some sample records are now used by other data. "
+            "Review the linked schedules, subjects, or sections first; no records were removed."
+        ) from exc
 
 conn = None
 
@@ -60,6 +167,18 @@ def init(path=None):
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    # Both CCS programs are permanent reference data, not demo academic records.
+    # Preserve existing IDs/relationships in older databases.
+    for code, name in CCS_PROGRAMS:
+        conn.execute(
+            "INSERT OR IGNORE INTO programs(code,name) VALUES(?,?)",
+            (code, name),
+        )
+    # Demo cleanup must never remove either permanent CCS program.
+    conn.execute(
+        "DELETE FROM sample_records WHERE table_name='programs' AND "
+        "record_id IN (SELECT id FROM programs WHERE code IN ('BSCS','BSIT'))"
+    )
     faculty_columns = {r["name"] for r in conn.execute("PRAGMA table_info(faculty)")}
     if "email" not in faculty_columns:
         conn.execute("ALTER TABLE faculty ADD COLUMN email TEXT NOT NULL DEFAULT ''")
@@ -79,7 +198,9 @@ def init(path=None):
         if existing and not collision:
             conn.execute("UPDATE classrooms SET name=?, floor=? WHERE id=?", (new_name, floor, existing["id"]))
 
-    conn.execute("""DELETE FROM programs WHERE code='BSEMC'
+    # Remove legacy unsupported programs only when they have no linked data.
+    # Do not silently orphan or reassign historical sections/subjects.
+    conn.execute("""DELETE FROM programs WHERE code IN ('BSEMC', 'BSIS')
                     AND NOT EXISTS (SELECT 1 FROM sections WHERE sections.program_id=programs.id)
                     AND NOT EXISTS (SELECT 1 FROM subject_programs WHERE subject_programs.program_id=programs.id)""")
     conn.execute("""UPDATE subjects SET preferred_room_id = COALESCE(
@@ -102,7 +223,10 @@ def row(sql, params=()):
 
 
 def is_empty():
-    return row("SELECT COUNT(*) AS n FROM programs")["n"] == 0
+    # Permanent BSCS/BSIT reference rows are not user-entered academic data.
+    return all(row(f"SELECT COUNT(*) AS n FROM {table}")["n"] == 0
+               for table in ("sections", "subjects", "faculty", "classrooms",
+                             "terms", "schedules"))
 
 
 def seed(reset=False):
@@ -111,8 +235,20 @@ def seed(reset=False):
         for t in ("schedules", "subject_programs", "subjects", "sections", "faculty", "classrooms",
                   "programs", "periods", "terms"):
             c.execute(f"DELETE FROM {t}")
+        c.execute("DELETE FROM sample_subject_links")
+        c.execute("DELETE FROM sample_records")
+        for code, name in CCS_PROGRAMS:
+            c.execute("INSERT OR IGNORE INTO programs(code,name) VALUES(?,?)",
+                      (code, name))
     if not is_empty():
         return False
+    original_ids = {
+        table: {r["id"] for r in rows(f"SELECT id FROM {table}")}
+        for table in SAMPLE_TABLES
+    }
+    original_links = {
+        tuple(r) for r in rows("SELECT subject_id, program_id FROM subject_programs")
+    }
 
     def hm(h, m=0):
         return h * 60 + m
@@ -120,11 +256,12 @@ def seed(reset=False):
     c.execute("INSERT INTO terms(name, is_current) VALUES('1st Semester, A.Y. 2025–2026', 1)")
     c.execute("INSERT INTO terms(name, is_current) VALUES('2nd Semester, A.Y. 2025–2026', 0)")
     term = row("SELECT id FROM terms WHERE is_current=1")["id"]
-    c.execute("INSERT INTO periods(name, start_min, end_min) VALUES('Regular Classes', ?, ?)", (hm(7), hm(20)))
+    c.execute("INSERT INTO periods(name, start_min, end_min) VALUES('Regular Classes', ?, ?)", (hm(7), hm(17)))
 
     prog = {}
     for code, name in CCS_PROGRAMS:
-        prog[code] = c.execute("INSERT INTO programs(code, name) VALUES(?,?)", (code, name)).lastrowid
+        c.execute("INSERT OR IGNORE INTO programs(code, name) VALUES(?,?)", (code, name))
+        prog[code] = row("SELECT id FROM programs WHERE code=?", (code,))["id"]
 
     subj = {}
     for code, title, units, typ, plist, rt in [
@@ -175,7 +312,7 @@ def seed(reset=False):
     add("CS 205", "BSCS 2A", "Santos", "Room 103", "Mon,Wed", hm(8), hm(9, 30))
     add("GE 108", "BSCS 2A", "Garcia", "Room 103", "Tue,Thu", hm(13), hm(14, 30))
     add("MATH 204", "BSCS 2A", "Dizon", "Room 203", "Mon,Thu", hm(15), hm(16, 30))
-    add("CS 220", "BSCS 2A", "Lim", "Room 204", "Fri", hm(14, 30), hm(17, 30))
+    add("CS 220", "BSCS 2A", "Lim", "Room 204", "Fri", hm(7), hm(10))
     add("IT 214", "BSIT 2B", "Cruz", "Room 204", "Tue,Thu", hm(10), hm(11, 30))
     add("IT 214", "BSIT 2A", "Cruz", "Room 204", "Mon,Wed", hm(10), hm(11, 30))
     add("CS 310", "BSCS 3A", "Lim", "Room 203", "Mon,Fri", hm(13), hm(14, 30))
@@ -188,7 +325,7 @@ def seed(reset=False):
     add("IT 301", "BSIT 3A", "Lim", "Room 204", "Tue", hm(10), hm(11, 30))
     add("GE 108", "BSCS 3A", "Santos", "Room 103", "Mon", hm(14), hm(15, 30))
     add("GE 108", "BSCS 1B", "Garcia", "Room 104", "Mon,Wed", hm(13), hm(14, 30))
-    add("CS 120", "BSCS 1A", "Lim", "Room 204", "Wed", hm(19), hm(21))
+    add("CS 120", "BSCS 1A", "Lim", "Room 204", "Wed", hm(7), hm(9))
 
     c.execute("""UPDATE subjects SET preferred_room_id = COALESCE(
                      (SELECT room_id FROM schedules WHERE schedules.subject_id=subjects.id ORDER BY id LIMIT 1),
@@ -196,5 +333,15 @@ def seed(reset=False):
     c.execute("""UPDATE subjects SET room_type=(
                      SELECT room_type FROM classrooms WHERE classrooms.id=subjects.preferred_room_id)
                  WHERE preferred_room_id IS NOT NULL""")
+    for table in SAMPLE_TABLES:
+        for record in rows(f"SELECT * FROM {table}"):
+            if record["id"] not in original_ids[table]:
+                c.execute(
+                    "INSERT OR REPLACE INTO sample_records(table_name,record_id,snapshot) VALUES(?,?,?)",
+                    (table, record["id"], _snapshot(record))
+                )
+    for link in rows("SELECT subject_id, program_id FROM subject_programs"):
+        if tuple(link) not in original_links:
+            c.execute("INSERT OR IGNORE INTO sample_subject_links VALUES(?,?)", tuple(link))
     c.commit()
     return True
