@@ -7,7 +7,7 @@ timestamps, or activity events are presented as live data.
 from PyQt5.QtCore import Qt, QDateTime, QTimer
 from PyQt5.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QLinearGradient
 from PyQt5.QtWidgets import (
-    QFrame, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QPushButton,
+    QFrame, QGraphicsDropShadowEffect, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QPushButton,
     QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
@@ -181,6 +181,11 @@ class DashboardPage(QScrollArea):
     def _metric(self, title, mark, tone, subtitle):
         card = QFrame()
         card.setObjectName("metricCard")
+        shadow = QGraphicsDropShadowEffect(card)
+        shadow.setBlurRadius(24)
+        shadow.setOffset(0, 3)
+        shadow.setColor(QColor(28, 48, 88, 36))
+        card.setGraphicsEffect(shadow)
         card.setMinimumHeight(132)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(19, 16, 18, 16)
