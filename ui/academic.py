@@ -116,13 +116,17 @@ ENTITIES = {
         "headers": ["Name", "Start", "End"],
         "fields": [F("name", "Period Name", ph="e.g. Regular Classes"),
                    F("start_min", "Start Time", "time", default=7 * 60, pair=True),
-                   F("end_min", "End Time", "time", default=20 * 60)],
+                   F("end_min", "End Time", "time", default=17 * 60)],
         "hint": "Classes outside these hours are flagged as Invalid Time.",
         "in_use": "It is in use.",
         "widths": {1: 140, 2: 140}, "flex": {0: 1},
         "fmt": {2: logic.fmt, 3: logic.fmt},
-        "validate": lambda v: {"end_min": "End time must be after the start time."}
-        if v["end_min"] <= v["start_min"] else {},
+        "validate": lambda v: (
+            {"end_min": "School hours are from 7:00 AM to 5:00 PM."}
+            if v["start_min"] < logic.CAL_START or v["end_min"] > logic.CAL_END
+            else {"end_min": "End time must be after the start time."}
+            if v["end_min"] <= v["start_min"] else {}
+        ),
     },
 }
 ORDER = ["programs", "sections", "subjects", "faculty", "classrooms", "terms", "periods"]
