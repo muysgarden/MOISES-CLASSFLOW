@@ -129,7 +129,7 @@ ENTITIES = {
         ),
     },
 }
-ORDER = ["programs", "sections", "subjects", "faculty", "classrooms", "terms", "periods"]
+ORDER = ["sections", "subjects", "faculty", "classrooms", "terms"]
 
 
 class MultiCheck(QWidget):
@@ -143,7 +143,7 @@ class MultiCheck(QWidget):
         g.setVerticalSpacing(6)
         progs = db.rows(f"SELECT id, code FROM programs WHERE code IN ({CCS_PROGRAM_SQL}) ORDER BY code")
         if not progs:
-            g.addWidget(label("Add a program first (Programs tab).", "muted"), 0, 0)
+            g.addWidget(label("BSCS and BSIT program options are unavailable. Reopen ClassFlow.", "muted"), 0, 0)
         for i, p in enumerate(progs):
             cb = QCheckBox(p["code"])
             self.boxes[p["id"]] = cb
@@ -466,14 +466,16 @@ class AcademicPage(Page):
         return ENTITIES[self.tab]
 
     def open(self, tab=None, edit_id=None):
-        if tab and tab != self.tab:
+        if tab in ORDER and tab != self.tab:
             self.set_tab(tab)
         else:
             self.refresh()
-        if edit_id:
+        if edit_id and (tab is None or tab in ORDER):
             self.edit(edit_id)
 
     def set_tab(self, key):
+        if key not in ORDER:
+            return
         self.tab, self.edit_id, self.page_no = key, None, 0
         self.tab_btns[key].setChecked(True)
         ent = self.ent
