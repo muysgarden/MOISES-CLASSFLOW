@@ -672,6 +672,18 @@ class SystemTests(unittest.TestCase):
         self.assertTrue(reports.filter_widgets['section'].isHidden())
         win.close()
 
+    def test_new_database_has_no_demo_academic_records_or_term(self):
+        db.conn.close()
+        db.init(':memory:')
+        auth.init()
+        init_availability()
+        win=MainWindow()
+        self.assertIsNone(win.term_id())
+        self.assertEqual(db.row('SELECT COUNT(*) FROM terms')[0],0)
+        for table in ('programs','sections','subjects','faculty','classrooms','schedules'):
+            self.assertEqual(db.row(f'SELECT COUNT(*) FROM {table}')[0],0)
+        win.close()
+
     def test_dataset_backup_new_workspace_and_restore(self):
         from ui.workspace import save_copy, create_blank_workspace, validate_workspace
         auth.create('admin','persistent-password')
