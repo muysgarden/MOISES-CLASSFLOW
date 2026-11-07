@@ -98,20 +98,23 @@ def validate_workspace(source):
     with path.open("rb") as handle:
         if handle.read(16)!=b"SQLite format 3\x00":
             raise ValueError("This is not a SQLite database file.")
-    connection=sqlite3.connect(f"file:{path.as_posix()}?mode=ro",uri=True)
     try:
-        ok=connection.execute("PRAGMA integrity_check").fetchone()[0]
-        if ok!="ok":
-            raise ValueError("The selected database did not pass its integrity check.")
-        tables={row[0] for row in connection.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        )}
-        required={"users","programs","subjects","sections","faculty",
-                  "classrooms","terms","schedules"}
-        if not required.issubset(tables):
-            raise ValueError("This is not a compatible ClassFlow dataset.")
-    finally:
-        connection.close()
+        connection=sqlite3.connect(f"file:{path.as_posix()}?mode=ro",uri=True)
+        try:
+            ok=connection.execute("PRAGMA integrity_check").fetchone()[0]
+            if ok!="ok":
+                raise ValueError("The selected database did not pass its integrity check.")
+            tables={row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )}
+            required={"users","programs","subjects","sections","faculty",
+                      "classrooms","terms","schedules"}
+            if not required.issubset(tables):
+                raise ValueError("This is not a compatible ClassFlow dataset.")
+        finally:
+            connection.close()
+    except sqlite3.DatabaseError as exc:
+        raise ValueError("This database cannot be opened safely as a ClassFlow dataset.") from exc
     return path
 
 def select_workspace(path):
