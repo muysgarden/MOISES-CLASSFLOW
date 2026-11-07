@@ -43,11 +43,11 @@ class LoginDialog(QDialog):
         self.failures = 0
         self.setStyleSheet('''
             QDialog { background:#202020; }
-            QLabel { color:#fff; background:transparent; font-size:11px; }
+            QLabel { color:#fff; background:transparent; font-size:12px; }
             QFrame#loginPanel { background:#202020; border-top-right-radius:12px; border-bottom-right-radius:12px; }
-            QLabel#loginTitle { font-size:29px; font-weight:700; }
-            QLabel#loginSub { color:#999; font-size:11px; }
-            QLineEdit { background:#444; color:white; border:1px solid #777; border-radius:14px; min-height:32px; padding:0 12px; }
+            QLabel#loginTitle { font-size:34px; font-weight:700; }
+            QLabel#loginSub { color:#B7B7B7; font-size:12px; }
+            QLineEdit { background:#444; color:white; border:1px solid #777; border-radius:12px; min-height:39px; padding:0 14px; }
             QPushButton#loginButton { background:#6021b5; color:white; border:1px solid #8246ca; border-radius:16px; padding:9px; }
             QPushButton#eye { background:transparent; border:0; color:#bbb; padding:0; min-width:26px; }
             QLabel#error { color:#efb8b8; background:#421d20; padding:8px; font-size:10px; }
@@ -58,7 +58,7 @@ class LoginDialog(QDialog):
             QPushButton#loginButton {{
                 background: {gradient()};
                 border: none; border-radius: 15px;
-                min-height: 25px; font-weight: 700;
+                min-height: 33px; font-weight: 700;
             }}
             QPushButton#loginButton:hover {{
                 background: {gradient("#3D86F4", "#AB4CF0")};
@@ -71,21 +71,23 @@ class LoginDialog(QDialog):
         root.addWidget(bg, 1)
         outer = QVBoxLayout(bg); outer.addStretch()
         center = QHBoxLayout(); center.addStretch()
-        card = QFrame(); card.setMinimumSize(0, 340)
-        card.setMaximumWidth(760)
+        # A roomier card on typical desktops, while smaller screens can
+        # still shrink the width without clipping the form.
+        card = QFrame(); card.setMinimumSize(0, 410)
+        card.setMaximumWidth(920)
         card.setStyleSheet('QFrame { border: none; }')
         row = QHBoxLayout(card); row.setContentsMargins(0,0,0,0); row.setSpacing(0)
-        photo = Photo('building.jpg', 95); photo.setMinimumWidth(180); photo.setMaximumWidth(285); photo.setProperty('rounded',True)
+        photo = Photo('building.jpg', 95); photo.setMinimumWidth(170); photo.setMaximumWidth(330); photo.setProperty('rounded',True)
         pl = QVBoxLayout(photo); pl.addStretch()
         logo = QLabel(); logo.setAlignment(Qt.AlignCenter)
         pix = QPixmap(str(ASSETS/'logo.png')) if (ASSETS/'logo.png').exists() else QPixmap()
         if not pix.isNull():
-            logo.setPixmap(pix.scaled(128,128,Qt.KeepAspectRatio,Qt.SmoothTransformation))
+            logo.setPixmap(pix.scaled(152,152,Qt.KeepAspectRatio,Qt.SmoothTransformation))
         else:
             logo.setText('CF'); logo.setStyleSheet('font-size:44px; font-weight:700; color:#ddd')
         pl.addWidget(logo); pl.addStretch(); row.addWidget(photo)
         panel = QFrame(); panel.setObjectName('loginPanel'); row.addWidget(panel,1)
-        form = QVBoxLayout(panel); form.setContentsMargins(28,24,28,24); form.setSpacing(8)
+        form = QVBoxLayout(panel); form.setContentsMargins(38,34,38,34); form.setSpacing(11)
         title = QLabel('ClassFlow'); title.setObjectName('loginTitle'); form.addWidget(title)
         sub = QLabel('Classroom Scheduling & Academic Timetabling'); sub.setObjectName('loginSub'); form.addWidget(sub)
         hint = QLabel('Create your administrator account.' if self.first else 'Sign in to manage academic records and schedules.')
