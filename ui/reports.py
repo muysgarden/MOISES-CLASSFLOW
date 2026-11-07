@@ -793,7 +793,8 @@ class ReportsPage(Page):
         doc=QTextDocument()
         mode=self.report.currentText()
         if mode=='Room Utilization Schedule':
-            content=self._official_heading('ROOM UTILIZATION SCHEDULE')+self.room_utilization_html()
+            content=(self._official_heading('ROOM UTILIZATION SCHEDULE')
+                     +self.room_utilization_html()+self._print_footer())
             doc.setHtml('<html><head><style>'+self._print_styles()+'</style></head><body>'+content+'</body></html>')
         else:
             doc.setHtml(self._timetable_html() if mode in TIMETABLE_REPORTS
