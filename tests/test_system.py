@@ -41,6 +41,11 @@ class SystemTests(unittest.TestCase):
 
     def test_login_ui(self):
         login=LoginDialog(); login.show()
+        app.processEvents()
+        self.assertTrue(bool(login.windowFlags() & Qt.WindowMinimizeButtonHint))
+        self.assertTrue(bool(login.windowFlags() & Qt.WindowMaximizeButtonHint))
+        self.assertFalse(bool(login.windowFlags() & Qt.FramelessWindowHint))
+        self.assertTrue(bool(login.windowState() & Qt.WindowMaximized))
         login.username.setText('registrar'); login.password.setText('password-123')
         QTest.mouseClick(login.submit,Qt.LeftButton); self.assertEqual(login.result(),1)
         second=LoginDialog(); second.username.setText('registrar'); second.password.setText('incorrect'); second.login()
