@@ -20,7 +20,6 @@ EXPLANATIONS = {
     "Classroom Conflict": "Two classes need the same room at the same time.",
     "Section Conflict": "One section has overlapping classes.",
     "Unavailable Resource": "A class uses a faculty member or room during a blocked time.",
-    "Capacity Problem": "The classroom has fewer seats than enrolled students.",
     "Teaching-Load Issue": "A faculty member is assigned more units than allowed.",
     "Invalid Time": "The class time is invalid or outside the school period.",
     "Course Mismatch": "The subject is not part of the section's course.",
@@ -31,7 +30,6 @@ NEXT_STEPS = {
     "Classroom Conflict": "Move one class to an available room or time.",
     "Section Conflict": "Move one class to a different time for this section.",
     "Unavailable Resource": "Choose another time, room, or faculty member.",
-    "Capacity Problem": "Assign a room that can accommodate the section.",
     "Teaching-Load Issue": "Reassign a class to a faculty member with available load.",
     "Invalid Time": "Adjust the class start or end time.",
     "Course Mismatch": "Select a subject offered by the section's course.",
@@ -70,10 +68,11 @@ class ValidationPage(Page):
         self.priority_cards = {}
         for severity, title, hint, accent in (
             (logic.CRITICAL, "Critical", "Overlaps and blocked resources", "#B42336"),
-            (logic.WARNING, "Warning", "Capacity and teaching-load concerns", "#AA6206"),
+            (logic.WARNING, "Warning", "Teaching-load concerns", "#AA6206"),
             (logic.REVIEW, "Review", "Time-window exceptions", "#3157AE"),
         ):
             card = PriorityCard(severity)
+            card.setFixedHeight(148)
             card.clicked.connect(self.toggle_priority)
             self.priority_cards[severity] = card
             body = card.body(margins=(18, 17, 18, 17), spacing=5)
@@ -89,7 +88,7 @@ class ValidationPage(Page):
             subtitle.setAttribute(Qt.WA_TransparentForMouseEvents)
             body.addWidget(subtitle)
             body.parentWidget().setAttribute(Qt.WA_TransparentForMouseEvents)
-            overview.addWidget(card)
+            overview.addWidget(card,1)
 
         self.results = Card(
             "Issues to Review", "Click a colored card above to filter by priority",
@@ -169,7 +168,7 @@ class ValidationPage(Page):
             active = self.active_priority == severity
             _foreground, _background, outline = PRIORITY_COLORS[severity]
             card.setStyleSheet(
-                f"QFrame#priorityCard {{border: {2 if active else 1}px solid {outline}; "
+                f"QFrame#priorityCard {{border: 2px solid {outline if active else '#DFE5F0'}; "
                 "background: #FFFFFF; border-radius: 12px;}"
             )
         self.results.subtitle.setText(
