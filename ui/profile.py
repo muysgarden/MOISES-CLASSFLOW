@@ -2,10 +2,11 @@
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QMessageBox, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
+    QMessageBox, QFileDialog, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 import auth
 import db
+from ui.workspace import save_copy, create_blank_workspace, validate_workspace, select_workspace, current_database_path
 from ui.theme import gradient
 
 
@@ -192,6 +193,33 @@ class AccountSettingsPage(QWidget):
         )
         self.demo_count = caption("", "settingsSectionTitle")
         layout.addWidget(self.demo_count)
+        layout.addSpacing(12)
+        layout.addWidget(caption("Dataset workspaces", "settingsSectionTitle"))
+        dataset_info = caption(
+            "Save a complete copy, start with blank academic records, or select "
+            "an older ClassFlow database. Previous files stay unchanged. "
+            "After switching datasets, close and reopen ClassFlow.",
+            "settingsHint",
+        )
+        dataset_info.setWordWrap(True)
+        layout.addWidget(dataset_info)
+        self.workspace_path_label = caption("", "settingsHint")
+        self.workspace_path_label.setWordWrap(True)
+        layout.addWidget(self.workspace_path_label)
+        actions = QHBoxLayout()
+        for title, callback in (
+            ("Save dataset copy…", self.save_dataset_copy),
+            ("New blank dataset…", self.new_dataset),
+            ("Open existing dataset…", self.open_dataset),
+        ):
+            control = QPushButton(title)
+            control.setObjectName("settingsBack")
+            control.clicked.connect(callback)
+            actions.addWidget(control)
+        actions.addStretch()
+        layout.addLayout(actions)
+        layout.addSpacing(22)
+        layout.addWidget(caption("Demonstration data", "settingsSectionTitle"))
         warning = caption(
             "Only records explicitly marked when ClassFlow created its demo dataset "
             "are eligible. Existing records from older versions are not assumed to be samples. "
@@ -217,6 +245,71 @@ class AccountSettingsPage(QWidget):
         count = db.sample_count()
         self.demo_count.setText(f"{count} tracked demonstration records")
         self.clear_samples_button.setEnabled(count > 0)
+        if hasattr(self, "workspace_path_label"):
+            path=current_database_path()
+            self.workspace_path_label.setText(
+                "Currently open dataset: " + (str(path) if path else "Temporary database")
+            )
+
+    def save_dataset_copy(self):
+        filename,_=QFileDialog.getSaveFileName(
+            self,"Save ClassFlow dataset copy","ClassFlow-backup.db",
+            "ClassFlow Database (*.db)"
+        )
+        if not filename:
+            return
+        try:
+            saved=save_copy(filename)
+        except (OSError,ValueError) as exc:
+            self.feedback(self.data_message,str(exc),False)
+            return
+        self.feedback(self.data_message,f"Dataset copy saved to {saved}",True)
+
+    def new_dataset(self):
+        filename,_=QFileDialog.getSaveFileName(
+            self,"Create a new blank ClassFlow dataset","ClassFlow-new.db",
+            "ClassFlow Database (*.db)"
+        )
+        if not filename:
+            return
+        answer=QMessageBox.question(
+            self,"Create a separate dataset?",
+            "This creates an empty academic dataset and keeps your current "
+            "administrator sign-in. Your existing database will not be deleted. "
+            "You'll need to close and reopen ClassFlow to switch.",
+            QMessageBox.Yes|QMessageBox.No,QMessageBox.No
+        )
+        if answer!=QMessageBox.Yes:
+            return
+        try:
+            created=create_blank_workspace(filename,self.username)
+        except (OSError,ValueError) as exc:
+            self.feedback(self.data_message,str(exc),False)
+            return
+        self.feedback(self.data_message,
+            f"New blank dataset created: {created}. Close and reopen ClassFlow to use it.",True)
+        QMessageBox.information(self,"New dataset ready",
+            "Your previous data is still intact. Close and reopen ClassFlow "
+            "to start entering records into the new blank dataset.")
+
+    def open_dataset(self):
+        filename,_=QFileDialog.getOpenFileName(
+            self,"Open a previous ClassFlow dataset","",
+            "ClassFlow Database (*.db)"
+        )
+        if not filename:
+            return
+        try:
+            selected=validate_workspace(filename)
+            select_workspace(selected)
+        except (OSError,ValueError) as exc:
+            self.feedback(self.data_message,str(exc),False)
+            return
+        self.feedback(self.data_message,
+            f"Selected dataset: {selected}. Close and reopen ClassFlow to load it.",True)
+        QMessageBox.information(self,"Dataset selected",
+            "Close and reopen ClassFlow to load this dataset. "
+            "Use the login credentials saved with that database.")
 
     def clear_samples(self):
         count = db.sample_count()
