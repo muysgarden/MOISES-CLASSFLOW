@@ -141,7 +141,7 @@ class ReportsPage(Page):
 
     def refresh(self):
         self._set_filter_options(self.program,
-            db.rows('SELECT id,name FROM programs ORDER BY code'),'All programs',True)
+            db.rows("SELECT id,name FROM programs WHERE code IN ('BSCS','BSIT') ORDER BY code"),'All programs',True)
         self._set_filter_options(self.faculty,
             db.rows('SELECT id,name FROM faculty ORDER BY name'),'All faculty',True)
         self._set_filter_options(self.room,
