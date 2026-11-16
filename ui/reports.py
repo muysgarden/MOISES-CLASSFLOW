@@ -5,7 +5,7 @@ from pathlib import Path
 from PyQt5.QtCore import QStandardPaths, QRectF, Qt, QPointF
 from PyQt5.QtGui import QPainter, QTextDocument, QTextLength, QTextTable, QColor, QFont, QFontMetrics, QPen
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
-from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QFileDialog
+from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QFileDialog, QSizePolicy
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
@@ -74,7 +74,12 @@ class ReportsPage(Page):
         ]:
             host=labeled(title,combo)
             filters.addWidget(host,1)
-            self.filter_widgets[key]=host
+            # Reserve each filter's place even when the selected report does
+        # not use it. Otherwise the whole toolbar reflows on every change.
+        policy=host.sizePolicy()
+        policy.setRetainSizeWhenHidden(True)
+        host.setSizePolicy(policy)
+        self.filter_widgets[key]=host
         row.addWidget(self.filter_card,2)
         self.report.currentIndexChanged.connect(self._report_changed)
         self.program.currentIndexChanged.connect(self.populate_sections)
@@ -87,6 +92,10 @@ class ReportsPage(Page):
         self.calendar=CalendarWidget(step_minutes=30)
         body.addWidget(self.calendar)
         self.table=make_table(['Subject','Section','Faculty','Room','Day','Time'])
+        # Match the fixed calendar viewport. Table results scroll inside this
+        # area instead of changing the height of the whole report page.
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.table.setFixedHeight(self.calendar.height())
         body.addWidget(self.table)
         self.resolve_button=button('Resolve conflicts',slot=lambda: self.win.go('validation'))
         self.resolve_button.hide()
@@ -134,7 +143,9 @@ class ReportsPage(Page):
             'Conflict Reports': set(),
             'Available Rooms': {'room'},
         }.get(mode,set())
-        self.filter_card.setVisible(bool(active))
+        # Keep the same four filter positions for every report type. Hidden
+        # widgets retain their geometry; only the active controls are shown.
+        self.filter_card.setVisible(True)
         for key,host in self.filter_widgets.items():
             host.setVisible(key in active)
         return active
@@ -339,7 +350,7 @@ class ReportsPage(Page):
         for index,record in enumerate(self.output):
             for col,value in enumerate(record):
                 self.table.setItem(index,col,text_item(value))
-        fit_table(self.table)
+        self.table.setFixedHeight(self.calendar.height())
         self.calendar.setVisible(grid_mode)
         self.table.setVisible(not grid_mode)
         self.chart_card.setVisible(mode=='Room Utilization')
