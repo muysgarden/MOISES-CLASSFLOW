@@ -92,13 +92,13 @@ class SchedulesPage(Page):
         self.fields = {}
         for index, (key, title, _sql) in enumerate(LOOKUPS):
             widget = searchable()
-            widget.lineEdit().setPlaceholderText(f"Search {title.lower()}…")
+            widget.lineEdit().setPlaceholderText("")
             self.fields[key] = widget
             grid.addWidget(labeled(title, widget), 0, index)
         self.fields["start"] = time_combo()
         self.fields["end"] = time_combo()
-        self.fields["start"].lineEdit().setPlaceholderText("e.g. 8:15 AM")
-        self.fields["end"].lineEdit().setPlaceholderText("e.g. 10:45 AM")
+        self.fields["start"].lineEdit().setPlaceholderText("")
+        self.fields["end"].lineEdit().setPlaceholderText("")
         days_panel = QWidget()
         day_box = QVBoxLayout(days_panel)
         day_box.setContentsMargins(0, 0, 0, 0)
