@@ -10,9 +10,12 @@ Requires Python 3.10+ and a desktop display (Windows, macOS, or Linux).
 python -m venv .venv
 ```
 
-Windows:
+Windows (recommended): double-click `run_classflow.bat` from the project folder. It creates a virtual environment, installs missing dependencies, and displays any startup errors.
+
+Manual Windows run:
 
 ```powershell
+py -3.12 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 .venv\Scripts\python main.py
 ```
@@ -26,7 +29,7 @@ macOS / Linux:
 
 On first launch, create your administrator username and password (minimum eight characters). Subsequent launches require those credentials. Passwords use salted PBKDF2-SHA256 hashes. Log out using the top bar. This is a local, single-office application; access to the database file should be limited to the office's authorized users.
 
-After the first login, choose whether to load the demonstration academic records or start empty. `python main.py --seed` loads demonstration records only when the academic database is empty; it never resets existing data. The sample dataset deliberately contains conflicts to demonstrate validation.
+New databases start without sample academic records. BSCS and BSIT reference options are always available. `python main.py --seed` loads demonstration records only when the academic database is empty; it never resets existing data. The sample dataset deliberately contains conflicts to demonstrate validation.
 
 The app creates `classflow.db` beside `main.py`. Set `CLASSFLOW_DB` to use another writable database path. Back up this database while the app is closed. The ZIP's existing database is not imported automatically or overwritten: to use it, copy that database to a separate location and set `CLASSFLOW_DB` to its full path. Back up your original first.
 
@@ -37,7 +40,7 @@ Place your own files in `assets/`:
 | File | Placement |
 | --- | --- |
 | `background.jpg` | Full login background |
-| `building.jpg` | Left panel of the login card |
+| `building.jpg` | Legacy image, no longer used by the frosted glass panel |
 | `logo.png` | College logo over the left panel |
 
 The login uses ClassFlow branding, a dark split card, username/password fields, password visibility toggle, inline login errors, and a blue-purple login button. Neutral placeholders appear until your images are supplied.
@@ -56,7 +59,7 @@ The login remains intentionally dark while sharing the same gradient accent and 
 
 ## Phase 2: Academic Records (Module 1)
 
-The existing seven Academic Records tabs remain intact. Records occupy the full table area by default; **Add New Record** or **Edit** reveals the inline form, and saving or cancelling restores the full-width table. The table's page controls appear when there are more than eight records.
+Academic Records has five tabs: Sections, Subjects, Faculty, Classrooms, and Academic Terms. Programs (fixed BSCS and BSIT) and School Periods (fixed school hours) are retained internally, not exposed as tabs. Records occupy the full table area by default; **Add New Record** or **Edit** reveals the inline form, and saving or cancelling restores the full-width table. The table's page controls appear when there are more than eight records.
 
 New text and numeric fields start blank, and required numeric values are validated before saving. Program, room and other selection fields support typing with matching suggestions; unrecognized values are rejected. Edits update the existing SQLite record, while Delete removes records after confirmation if no dependent schedules or other references require them. A clear explanation names the dependent records when deletion is blocked. No existing data is silently discarded or reset.
 
