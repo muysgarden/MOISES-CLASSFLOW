@@ -133,6 +133,21 @@ class SystemTests(unittest.TestCase):
         self.assertEqual(win._search_results('there-is-no-classflow-result'), [])
         win.close()
 
+    def test_global_search_dropdown_is_legible_and_wider_than_field(self):
+        win=MainWindow()
+        win.show()
+        app.processEvents()
+        self.assertEqual(win.search_results.objectName(),"globalSearchResults")
+        self.assertEqual(win.search_results.font().pointSize(),11)
+        win._show_search_suggestions([
+            ("Subject · CS 310 — Database Management Systems",("academic","subjects",1))
+        ])
+        app.processEvents()
+        self.assertGreater(win.search_results.width(),win.search.width())
+        self.assertTrue(win.search_results.horizontalScrollBarPolicy()==Qt.ScrollBarAlwaysOff)
+        win.search_completer.popup().hide()
+        win.close()
+
     def test_school_hours_and_suggested_slots(self):
         self.assertEqual(logic.CAL_START, 7*60)
         self.assertEqual(logic.CAL_END, 17*60)
