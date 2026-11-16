@@ -242,7 +242,7 @@ class AvailabilityPage(Page):
         reason_row.addWidget(self._label("Reason (optional)"))
         self.block_reason = QLineEdit()
         self.block_reason.setMaxLength(180)
-        self.block_reason.setPlaceholderText("e.g. Faculty meeting, maintenance, school activity")
+        self.block_reason.setPlaceholderText("")
         reason_row.addWidget(self.block_reason)
         v.addLayout(reason_row)
         save = button("Mark unavailable", "primary", self.save_unavailability)
@@ -300,7 +300,7 @@ class AvailabilityPage(Page):
         self.resource.blockSignals(False)
         if self.resource.currentIndex() == 0:
             self.resource.lineEdit().clear()
-            self.resource.lineEdit().setPlaceholderText("Type to find faculty or room…")
+            self.resource.lineEdit().setPlaceholderText("")
 
     def _reload_blocks(self):
         items = db.rows("SELECT * FROM unavailable ORDER BY day,start_min,id")
