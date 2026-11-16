@@ -514,6 +514,22 @@ class SystemTests(unittest.TestCase):
         self.assertTrue(all(r['faculty_id']==faculty for r in page.report_rows))
         win.close()
 
+    def test_entry_forms_do_not_show_example_placeholders(self):
+        win=MainWindow()
+        academic=win.pages['academic']
+        for tab in ('sections','subjects','faculty','classrooms','terms'):
+            academic.set_tab(tab)
+            for widget in academic.form.widgets.values():
+                if hasattr(widget,'placeholderText'):
+                    self.assertNotIn('e.g.',widget.placeholderText().lower())
+                    self.assertEqual(widget.placeholderText(),'')
+        schedules=win.pages['schedules']
+        for key in ('start','end'):
+            self.assertEqual(schedules.fields[key].lineEdit().placeholderText(),'')
+        availability=win.pages['availability']
+        self.assertEqual(availability.block_reason.placeholderText(),'')
+        win.close()
+
     def test_academic_faculty_creation(self):
         win=MainWindow(); page=win.pages['academic']; page.set_tab('faculty')
         page.form.widgets['name'].setText('Prof. Test Faculty')
