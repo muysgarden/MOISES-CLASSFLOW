@@ -42,7 +42,7 @@ ENTITIES = {
               JOIN programs p ON p.id = s.program_id
               WHERE p.code IN ({CCS_PROGRAM_SQL}) ORDER BY s.name""",
         "headers": ["Section"],
-        "fields": [F("name", "Section Name", ph="e.g. BSCS 2A"),
+        "fields": [F("name", "Section Name"),
                                      F("program_id", "Academic Program", "fk",
                                          sql=f"SELECT id, code FROM programs WHERE code IN ({CCS_PROGRAM_SQL}) ORDER BY code",
                      placeholder="Select a program")],
@@ -62,8 +62,8 @@ ENTITIES = {
                       SELECT 1 FROM subject_programs sp JOIN programs p ON p.id = sp.program_id
                       WHERE sp.subject_id = s.id AND p.code IN ({CCS_PROGRAM_SQL})) ORDER BY s.code""",
         "headers": ["Subject Code", "Subject Title", "Units", "Program", "Type", "Room"],
-        "fields": [F("code", "Subject Code", ph="e.g. CS 320"),
-                   F("title", "Subject Title", ph="Enter subject title"),
+        "fields": [F("code", "Subject Code"),
+                   F("title", "Subject Title"),
                    F("units", "Units", "int", min=1, max=9, default=3, suffix=" units", pair=True),
                    F("type", "Subject Type", "choice", options=db.SUBJECT_TYPES),
                    F("programs", "Academic Program", "multi"),
@@ -81,9 +81,9 @@ ENTITIES = {
         "tab": "Faculty", "singular": "Faculty", "plural": "faculty members", "table": "faculty",
         "sql": "SELECT id, name, email, department, max_units FROM faculty ORDER BY name",
         "headers": ["Name", "Email", "Department", "Max Units"],
-        "fields": [F("name", "Full Name", ph="e.g. Dr. Jane Doe"),
-                   F("email", "Email Address", ph="e.g. jane.doe@college.edu", required=False, maxlen=254),
-                   F("department", "Department", ph="e.g. Computer Science"),
+        "fields": [F("name", "Full Name"),
+                   F("email", "Email Address", required=False, maxlen=254),
+                   F("department", "Department"),
                    F("max_units", "Maximum Teaching Load", "int", min=1, max=40, default=18, suffix=" units")],
         "hint": "The maximum load is used to flag overloaded faculty in Module 4.",
         "in_use": "They are assigned to scheduled classes.",
@@ -93,8 +93,8 @@ ENTITIES = {
         "tab": "Classrooms", "singular": "Classroom", "plural": "classrooms", "table": "classrooms",
         "sql": "SELECT id, name, floor, room_type FROM classrooms ORDER BY name",
         "headers": ["Room", "Floor", "Type"],
-        "fields": [F("name", "Room Name", ph="e.g. Room 107"),
-               F("floor", "Floor", ph="e.g. 1st Floor", required=False),
+        "fields": [F("name", "Room Name"),
+               F("floor", "Floor", required=False),
                    F("room_type", "Room Type", "choice", options=[("Lecture","Lecture"),("Laboratory","Laboratory")])],
         "hint": "Assign rooms by type and availability.",
         "in_use": "It is used by scheduled classes.",
@@ -104,7 +104,7 @@ ENTITIES = {
         "tab": "Academic Terms", "singular": "Academic Term", "plural": "terms", "table": "terms",
         "sql": "SELECT id, name, CASE is_current WHEN 1 THEN 'Yes' ELSE 'No' END FROM terms ORDER BY id DESC",
         "headers": ["Term", "Current"],
-        "fields": [F("name", "Term Name", ph="e.g. 1st Semester, A.Y. 2025–2026"),
+        "fields": [F("name", "Term Name"),
                    F("is_current", "Current Term", "bool", checkbox="Use as the current term")],
         "hint": "The current term is selected by default when the app opens.",
         "in_use": "It already has scheduled classes.",
@@ -114,7 +114,7 @@ ENTITIES = {
         "tab": "School Periods", "singular": "School Period", "plural": "school periods", "table": "periods",
         "sql": "SELECT id, name, start_min, end_min FROM periods ORDER BY start_min",
         "headers": ["Name", "Start", "End"],
-        "fields": [F("name", "Period Name", ph="e.g. Regular Classes"),
+        "fields": [F("name", "Period Name"),
                    F("start_min", "Start Time", "time", default=7 * 60, pair=True),
                    F("end_min", "End Time", "time", default=17 * 60)],
         "hint": "Classes outside these hours are flagged as Invalid Time.",
@@ -237,7 +237,8 @@ class FormPanel(QFrame):
         kind, key = f["kind"], f["key"]
         if kind == "text":
             w = QLineEdit()
-            w.setPlaceholderText(f.get("ph", ""))
+            # Labels identify the field; keep empty inputs visually clean.
+            w.setPlaceholderText("")
             if f.get("maxlen"):
                 w.setMaxLength(f["maxlen"])
             w.returnPressed.connect(self.page.save)
@@ -245,7 +246,7 @@ class FormPanel(QFrame):
             # A fresh form is genuinely empty; the database receives a number
             # only after the person enters it.
             w = QLineEdit()
-            w.setPlaceholderText(f"Enter {f['label'].lower()}")
+            w.setPlaceholderText("")
             w.setValidator(QIntValidator(f["min"], f["max"], w))
         elif kind == "choice":
             w = Combo()
