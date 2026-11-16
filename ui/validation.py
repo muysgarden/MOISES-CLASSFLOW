@@ -114,7 +114,12 @@ class ValidationPage(Page):
         self.empty.setStyleSheet("color: #64748B; padding: 18px;")
         self.results.add(self.empty)
         self.detail = Card("Selected Conflict", "Choose an issue above to view its details")
-        self.detail.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        # Filters may temporarily have no matching issues. Reserve the detail
+        # card's footprint so the rest of Module 4 does not jump vertically.
+        detail_policy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        detail_policy.setRetainSizeWhenHidden(True)
+        self.detail.setSizePolicy(detail_policy)
+        self.detail.setMinimumHeight(155)
         self.detail_body = self.detail.body(margins=(18, 8, 18, 16), spacing=7)
         self.detail_title = QLabel("No conflict selected")
         self.detail_title.setStyleSheet("font-size: 16px; font-weight: 650; color: #1B3155;")
