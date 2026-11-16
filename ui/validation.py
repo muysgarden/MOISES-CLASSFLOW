@@ -105,9 +105,17 @@ class ValidationPage(Page):
             ["Priority", "Problem", "Affected Class", "What happened"],
             row_h=60, fixed={0: 90}, flex={1: 3, 2: 3, 3: 4},
         )
+        # Fixed-height results prevent Critical/Warning/Review filters from
+        # moving other cards around. The table scrolls when issues exceed it.
+        self.table.setFixedHeight(self.table.horizontalHeader().height() + 6 * 60 + 2)
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.cellClicked.connect(self.select_issue)
+        # Preserve the result-table footprint even on a clean audit.
+        table_policy = self.table.sizePolicy()
+        table_policy.setRetainSizeWhenHidden(True)
+        self.table.setSizePolicy(table_policy)
         self.results.add(self.table)
         self.empty = QLabel("No issues match these filters.")
         self.empty.setAlignment(Qt.AlignCenter)
@@ -225,7 +233,6 @@ class ValidationPage(Page):
             description.setStyleSheet("color: #283955; font-size: 13px;")
             description.setAttribute(Qt.WA_TransparentForMouseEvents)
             self.table.setCellWidget(row, 3, description)
-        fit_table(self.table)
         self.table.setVisible(bool(issues))
         self.empty.setVisible(not issues)
         self.selected_issue = None
