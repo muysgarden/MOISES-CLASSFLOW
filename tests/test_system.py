@@ -245,6 +245,28 @@ class SystemTests(unittest.TestCase):
             self.assertEqual(page.calendar.height(),preview_height,mode)
         win.close()
 
+    def test_schedule_filters_and_conflict_priorities_keep_table_height(self):
+        win=MainWindow()
+        win.show()
+        app.processEvents()
+        schedules=win.pages['schedules']
+        schedules.refresh()
+        initial=schedules.table.height()
+        schedules.search.setText('there-is-no-such-class')
+        app.processEvents()
+        self.assertEqual(schedules.table.height(),initial)
+        schedules.search.clear()
+        app.processEvents()
+        self.assertEqual(schedules.table.height(),initial)
+        checks=win.pages['validation']
+        checks.refresh()
+        starting=checks.table.height()
+        for level in (logic.CRITICAL,logic.WARNING,logic.REVIEW):
+            checks.toggle_priority(level)
+            app.processEvents()
+            self.assertEqual(checks.table.height(),starting)
+        win.close()
+
     def test_reports_show_only_relevant_filters(self):
         win=MainWindow()
         page=win.pages['reports']
