@@ -221,6 +221,30 @@ class SystemTests(unittest.TestCase):
         self.assertEqual(page.result['total'],logic.validate_term(win.term_id())['total'])
         win.close()
 
+    def test_report_dropdown_keeps_filter_and_preview_layout_stable(self):
+        win=MainWindow()
+        win.show()
+        app.processEvents()
+        page=win.pages['reports']
+        page.refresh()
+        page.report.setCurrentText('Class Schedules')
+        app.processEvents()
+        slots={key:host.geometry() for key,host in page.filter_widgets.items()}
+        preview_height=page.table.height()
+        self.assertEqual(preview_height,page.calendar.height())
+        for mode in ('Faculty Schedules','Classroom Schedules',
+                     'Room Utilization','Faculty Teaching Load','Available Rooms',
+                     'Class Schedules'):
+            page.report.setCurrentText(mode)
+            app.processEvents()
+            self.assertEqual(
+                {key:host.geometry() for key,host in page.filter_widgets.items()},
+                slots, mode
+            )
+            self.assertEqual(page.table.height(),preview_height,mode)
+            self.assertEqual(page.calendar.height(),preview_height,mode)
+        win.close()
+
     def test_reports_show_only_relevant_filters(self):
         win=MainWindow()
         page=win.pages['reports']
