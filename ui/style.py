@@ -367,6 +367,22 @@ QComboBox#termSelector { min-height: 35px; border-radius: 11px; background: whit
 QListView { background: white; border: 1px solid $border; border-radius: 10px; outline: 0; }
 QListView::item { padding: 10px 12px; color: $ink; }
 QListView::item:selected { color: $deep_blue; background: #EAF1FF; }
+QListView#globalSearchResults {
+    background: #FFFFFF; color: #19263B; border: 1px solid #C4D4E9;
+    border-radius: 11px; outline: none; font-family: "Segoe UI", Arial;
+    font-size: 13px; selection-background-color: #E5F0FF;
+    selection-color: #17498F;
+}
+QListView#globalSearchResults::item {
+    color: #19263B; background: #FFFFFF; padding: 12px 16px;
+    min-height: 23px; border-bottom: 1px solid #EDF2F8;
+}
+QListView#globalSearchResults::item:hover {
+    background: #F1F6FF; color: #16386C;
+}
+QListView#globalSearchResults::item:selected {
+    background: #E5F0FF; color: #17498F;
+}
 
 /* Dashboard cards, shortcuts, and genuine schedule summaries. */
 #dashboardPage, #dashboardCanvas { background: $page; }
