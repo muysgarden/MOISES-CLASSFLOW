@@ -1,8 +1,8 @@
-from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer, QStringListModel
-from PyQt5.QtGui import QColor, QKeySequence, QPainter, QPainterPath, QPen, QPolygonF
+from PyQt5.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, QStringListModel
+from PyQt5.QtGui import QColor, QFont, QFontMetrics, QKeySequence, QPainter, QPainterPath, QPen, QPolygonF
 from PyQt5.QtWidgets import (
     QButtonGroup, QComboBox, QCompleter, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QStackedWidget,
-    QVBoxLayout, QWidget, QFrame, QSizePolicy, QShortcut,
+    QVBoxLayout, QWidget, QFrame, QSizePolicy, QShortcut, QApplication, QListView,
 )
 
 import db
@@ -329,6 +329,17 @@ class MainWindow(QMainWindow):
         self.search_completer.setFilterMode(Qt.MatchContains)
         self.search_completer.setCompletionMode(QCompleter.PopupCompletion)
         self.search_completer.setMaxVisibleItems(9)
+        # A dedicated popup avoids cramped, unreadable suggestions when
+        # schedule and subject names are longer than the search input.
+        self.search_results = QListView()
+        self.search_results.setObjectName("globalSearchResults")
+        self.search_results.setUniformItemSizes(True)
+        self.search_results.setTextElideMode(Qt.ElideRight)
+        self.search_results.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.search_results.setSpacing(3)
+        self.search_results.setMouseTracking(True)
+        self.search_results.setFont(QFont("Segoe UI", 11))
+        self.search_completer.setPopup(self.search_results)
         self.search_completer.activated[str].connect(self._open_suggestion)
         self.search.setCompleter(self.search_completer)
         self.search.textEdited.connect(self._update_suggestions)
@@ -438,9 +449,32 @@ class MainWindow(QMainWindow):
         self.search_model.setStringList([text for text, _ in matches])
         if matches and self.search.hasFocus():
             self.search_completer.setCompletionPrefix(query)
-            self.search_completer.complete()
+            self._show_search_suggestions(matches)
         else:
             self.search_completer.popup().hide()
+
+    def _show_search_suggestions(self, matches):
+        """Show legible suggestions without overflowing the available screen."""
+        popup = self.search_completer.popup()
+        screen = QApplication.screenAt(self.search.mapToGlobal(QPoint(0, 0)))
+        if screen is None:
+            screen = QApplication.primaryScreen()
+        bounds = screen.availableGeometry() if screen else self.geometry()
+        metrics = QFontMetrics(popup.font())
+        desired = max(
+            self.search.width(),
+            min(640, max(470, max(metrics.horizontalAdvance(title)
+                              for title, _ in matches) + 44))
+        )
+        width = max(self.search.width(), min(desired, bounds.width() - 24))
+        popup.setMinimumWidth(width)
+        popup.setMaximumWidth(width)
+        self.search_completer.complete()
+        # Place the expanded popup on screen even when the top bar's search
+        # field is near the far-right edge or on a smaller laptop display.
+        x = self.search.mapToGlobal(QPoint(0, 0)).x()
+        x = min(max(x, bounds.left() + 8), bounds.right() - width - 8)
+        popup.move(x, popup.y())
 
     def _open_suggestion(self, text):
         target = self._suggestion_targets.get(text)
