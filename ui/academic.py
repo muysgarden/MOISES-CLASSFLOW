@@ -427,6 +427,12 @@ class AcademicPage(Page):
         self.type_filter = Combo()
         self.type_filter.setFixedWidth(120)
         self.type_filter.currentIndexChanged.connect(self._filters_changed)
+        # Preserve the header geometry when changing Academic Records tabs.
+        # Filters remain usable for Subjects and invisible for other tabs.
+        for control in (self.prog_filter, self.type_filter):
+            policy = control.sizePolicy()
+            policy.setRetainSizeWhenHidden(True)
+            control.setSizePolicy(policy)
         self.card = Card("Subjects", "", right=[self.search, self.prog_filter, self.type_filter])
         self.table_holder = QVBoxLayout()
         self.table_holder.setContentsMargins(0, 0, 0, 0)
