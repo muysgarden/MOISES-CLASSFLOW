@@ -261,7 +261,8 @@ class SystemTests(unittest.TestCase):
         sid=page.section.currentData()
         self.assertTrue(all(r['section_id']==sid for r in page.report_rows))
         page.report.setCurrentText('Room Utilization')
-        self.assertTrue(page.filter_card.isHidden())
+        # Filter toolbar reserves its space, even when the chart needs no filters.
+        self.assertFalse(page.filter_card.isHidden())
         self.assertFalse(page.chart_card.isHidden())
         self.assertEqual(len(page.report_rows),len(logic.schedule_rows(win.term_id())))
         win.close()
