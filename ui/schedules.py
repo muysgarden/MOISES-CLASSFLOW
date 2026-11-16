@@ -179,7 +179,10 @@ class SchedulesPage(Page):
             row_h=54, fixed={0: 78, 6: 158},
             flex={1: 2, 2: 2, 3: 2, 4: 2, 5: 3},
         )
-        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        # Keep the saved-schedules area stable while filtering/paging.
+        self.table.setFixedHeight(self.table.horizontalHeader().height()
+                                  + SCHEDULES_PER_PAGE * 54 + 3)
         listing.add(self.table)
         footer = QWidget()
         pagination = QHBoxLayout(footer)
@@ -460,8 +463,6 @@ class SchedulesPage(Page):
             actions.addWidget(button("Edit", "linkbtn", lambda _=False, g=group: self.edit(g)))
             actions.addWidget(button("Delete", "danger", lambda _=False, g=group: self.delete(g)))
             widget_cell(self.table, index, 6, action_host)
-        height = self.table.horizontalHeader().height() + len(groups) * 54 + 3
-        self.table.setFixedHeight(max(100, height))
         count = sum(
             query in " ".join(str(value) for value in group.values()).casefold()
             and (self.list_section.currentData() is None
